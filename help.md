@@ -31,7 +31,7 @@ cd frontend
 npm install
 ```
 
-## Run Locally
+## Run Locally (Without Docker)
 
 **Terminal 1 - Backend:**
 ```bash
@@ -51,6 +51,34 @@ npm run dev
 - Backend: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
+**Using Docker Compose (recommended):**
+```bash
+# Make sure backend/.env exists first
+docker-compose up --build
+```
+
+Access at:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000
+
+**Individual containers:**
+```bash
+# Backend
+cd backend
+docker build -t fxtrade-backend .
+docker run -p 8000:8000 --env-file .env fxtrade-backend
+
+# Frontend
+cd frontend
+docker build -t fxtrade-frontend .
+docker run -p 3000:80 fxtrade-frontend
+```
+
+**Stop containers:**
+```bash
+docker-compose down
+```
+
 ## Get Supabase Credentials
 
 1. Visit https://app.supabase.com
@@ -65,10 +93,12 @@ npm run dev
 ```bash
 gcloud auth login
 gcloud projects create my-fxtrade-project --set-as-default
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
 ```
 
-### Deploy Backend
+### Option 1: Deploy with Buildpacks (No Docker)
+
+**Deploy Backend:**
 ```bash
 cd backend
 gcloud run deploy fxtrade-backend \
@@ -78,14 +108,52 @@ gcloud run deploy fxtrade-backend \
   --set-env-vars SUPABASE_URL=your_url,SUPABASE_KEY=your_key
 ```
 
-Note the backend URL from the output.
-
-### Deploy Frontend
+**Deploy Frontend:**
 ```bash
 cd frontend
 echo "VITE_API_URL=https://fxtrade-backend-xxx.run.app" > .env.production
 gcloud run deploy fxtrade-frontend \
   --source . \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+### Option 2: Deploy with Docker
+
+**1. Create Artifact Registry repository:**
+```bash
+gcloud artifacts repositories create fxtrade-repo \
+  --repository-format=docker \
+  --location=us-central1
+```
+
+**2. Configure Docker authentication:**
+```bash
+gcloud auth configure-docker us-central1-docker.pkg.dev
+```
+
+**3. Build and push Backend:**
+```bash
+cd backend
+docker build -t us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/backend:latest .
+docker push us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/backend:latest
+
+gcloud run deploy fxtrade-backend \
+  --image us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/backend:latest \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars SUPABASE_URL=your_url,SUPABASE_KEY=your_key
+```
+
+**4. Build and push Frontend:**
+```bash
+cd frontend
+echo "VITE_API_URL=https://fxtrade-backend-xxx.run.app" > .env.production
+docker build -t us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/frontend:latest .
+docker push us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/frontend:latest
+
+gcloud run deploy fxtrade-frontend \
+  --image us-central1-docker.pkg.dev/my-fxtrade-project/fxtrade-repo/frontend:latest \
   --region us-central1 \
   --allow-unauthenticated
 ```
@@ -99,11 +167,7 @@ allow_origins=[
 ]
 ```
 
-Then redeploy backend:
-```bash
-cd backend
-gcloud run deploy fxtrade-backend --source .
-```
+Redeploy backend with your chosen method.
 
 ## Project Structure
 
@@ -150,6 +214,7 @@ CapstoneProject/
 
 ## Notes
 
-- GCP auto-detects and builds your app (no Docker needed)
-- Cloud Run free tier: 2M requests/month
-- Keep `.env` files secret (never commit)
+- Option 1 (Buildpacks): GCP auto-detects and builds your app
+- Option 2 (Docker): More control over build process
+- Keep `.env` files secret
+- Docker Compose simplifies local development
