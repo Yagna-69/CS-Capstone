@@ -9,6 +9,7 @@ Forex trading platform built with Vue 3, Python FastAPI, and Supabase.
 - User authentication (login/signup)
 - Responsive dark theme UI
 - News and AI insights (coming soon)
+- **Automated CI/CD deployment with GitHub Actions**
 
 ## Tech Stack
 
@@ -67,7 +68,9 @@ See [HELP.md](./help.md) for detailed manual setup instructions.
 
 ## Documentation
 
+- [README.md](./README.md) - This file (quick start)
 - [HELP.md](./help.md) - Comprehensive setup and deployment guide
+- [CI_CD_SETUP.md](./CI_CD_SETUP.md) - GitHub Actions automated deployment
 - [Frontend README](./frontend/README.md) - Frontend-specific details
 
 ## Project Structure

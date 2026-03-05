@@ -8,8 +8,8 @@ const isLoginPage = computed(() => route.path === '/login')
 const searchQuery = ref('')
 const searchFocused = ref(false)
 
-// Toggle to show/hide the bottom ticker jumbotron
-const showTicker = ref(false)
+// Toggle to show/hide the ticker jumbotron
+const showTicker = ref(true)
 
 // Track user authentication status
 const isSignedIn = ref(false)
@@ -28,7 +28,7 @@ const baseCurrencies = ref([
   { pair: 'GBP/JPY', price: '189.76', trend: 'down' }
 ])
 
-// Duplicated to guarantee overflow for infinite scrolling
+// Duplicated for infinite scroll
 const tickerItems = computed(() => {
   return [...baseCurrencies.value, ...baseCurrencies.value, ...baseCurrencies.value]
 })
@@ -55,9 +55,10 @@ defineExpose({ updateTickerData })
   <div v-if="!isLoginPage" id="app" class="min-h-screen bg-bg-primary flex flex-col">
     <header class="bg-bg-secondary border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-opacity-90">
       <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
+        <div class="flex justify-between items-center h-16 gap-6">
           
-          <div class="flex items-center gap-6">
+          <!-- Left: Logo + Search Bar -->
+          <div class="flex items-center gap-6 flex-shrink-0">
             <RouterLink to="/" class="text-3xl font-bold font-goldman text-primary hover:opacity-80 transition">FXTrade</RouterLink>
             
             <div class="relative hidden sm:block">
@@ -67,22 +68,42 @@ defineExpose({ updateTickerData })
                 placeholder="Search currencies"
                 @focus="searchFocused = true"
                 @blur="searchFocused = false"
-                class="search-input w-48 focus:w-72 px-4 py-2 pl-10 bg-bg-primary border border-gray-700 rounded-full text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-all duration-300"
+                class="search-input w-48 focus:w-64 px-4 py-2 pl-10 bg-bg-primary border border-gray-700 rounded-full text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-all duration-300 text-sm"
               />
-              <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 transition-colors" :class="{ 'text-primary': searchFocused }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 transition-colors" :class="{ 'text-primary': searchFocused }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
               </svg>
             </div>
           </div>
 
-          <div class="flex items-center gap-4">
-            <div class="hidden md:flex gap-2 mr-2">
+          <!-- Center: Currency Ticker with 3D Curved Perspective -->
+          <div v-if="showTicker" class="flex-1 overflow-hidden mx-4 perspective-container">
+            <div class="ticker-scroll-container">
+              <div class="ticker-scroll">
+                <span 
+                  v-for="(item, index) in tickerItems" 
+                  :key="index"
+                  class="ticker-item"
+                >
+                  <span class="font-bold text-gray-400">{{ item.pair }}</span>
+                  <span class="text-primary">{{ item.price }}</span>
+                  <span :class="item.trend === 'up' ? 'text-green-500' : 'text-red-500'">
+                    {{ item.trend === 'up' ? '▲' : '▼' }}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Nav Links + Trade -->
+          <div class="flex items-center gap-4 flex-shrink-0">
+            <div class="hidden md:flex gap-2">
               <RouterLink to="/" class="nav-link">Dashboard</RouterLink>
               <RouterLink to="/news" class="nav-link">News</RouterLink>
               <RouterLink to="/ai" class="nav-link">Insight</RouterLink>
             </div>
             
-            <button @click="handleTradeClick" class="px-6 py-2 bg-primary text-black rounded-full font-bold hover:bg-primary-dark transition-all text-base">
+            <button @click="handleTradeClick" class="px-6 py-2 bg-primary text-black rounded-full font-bold hover:bg-primary-dark transition-all text-sm">
               Trade
             </button>
           </div>
@@ -94,33 +115,6 @@ defineExpose({ updateTickerData })
     <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
       <RouterView />
     </main>
-
-    <!-- Bottom Ticker Jumbotron -->
-    <footer v-if="showTicker" class="border-t border-gray-800/50 bg-black/10 overflow-hidden py-2 group flex sticky bottom-0 z-40 backdrop-blur-sm bg-opacity-90">
-      <div class="flex w-max animate-marquee hover:cursor-default">
-        
-        <div class="flex flex-shrink-0 gap-12 pr-12 text-sm font-mono items-center">
-          <span v-for="(item, index) in tickerItems" :key="`set1-${index}`" class="text-yellow-500/70 whitespace-nowrap flex items-center gap-2">
-            <span class="font-bold text-gray-400">{{ item.pair }}</span>
-            <span>{{ item.price }}</span>
-            <span :class="item.trend === 'up' ? 'text-green-500' : 'text-red-500'">
-              {{ item.trend === 'up' ? '▲' : '▼' }}
-            </span>
-          </span>
-        </div>
-
-        <div class="flex flex-shrink-0 gap-12 pr-12 text-sm font-mono items-center" aria-hidden="true">
-          <span v-for="(item, index) in tickerItems" :key="`set2-${index}`" class="text-yellow-500/70 whitespace-nowrap flex items-center gap-2">
-            <span class="font-bold text-gray-400">{{ item.pair }}</span>
-            <span>{{ item.price }}</span>
-            <span :class="item.trend === 'up' ? 'text-green-500' : 'text-red-500'">
-              {{ item.trend === 'up' ? '▲' : '▼' }}
-            </span>
-          </span>
-        </div>
-        
-      </div>
-    </footer>
   </div>
   
   <RouterView v-else />
@@ -128,7 +122,7 @@ defineExpose({ updateTickerData })
 
 <style scoped>
 .nav-link {
-  @apply text-gray-400 hover:text-white px-4 py-2 rounded-full text-base font-semibold transition-all;
+  @apply text-gray-400 hover:text-white px-4 py-2 rounded-full text-sm font-semibold transition-all;
 }
 
 .nav-link.router-link-active {
@@ -143,18 +137,86 @@ defineExpose({ updateTickerData })
   box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
 }
 
-/* Marquee Animation Classes */
-@keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+/* 3D Perspective Container */
+.perspective-container {
+  perspective: 1000px;
+  perspective-origin: center;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
-.animate-marquee {
-  animation: marquee 70s linear infinite;
+/* Ticker Scroll Container with Curve Effect */
+.ticker-scroll-container {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
+  );
 }
 
-/* Pause the animation when the user hovers over the ticker */
-.group:hover .animate-marquee {
+/* Scrolling Ticker with 3D Transform */
+.ticker-scroll {
+  display: flex;
+  gap: 2rem;
+  animation: scroll-curve 40s linear infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Individual Ticker Items */
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+  transform-style: preserve-3d;
+  animation: curve-perspective 40s linear infinite;
+}
+
+/* 3D Curve Animation */
+@keyframes scroll-curve {
+  0% {
+    transform: translateX(0) translateZ(0) rotateY(0deg);
+  }
+  100% {
+    transform: translateX(-33.33%) translateZ(0) rotateY(0deg);
+  }
+}
+
+@keyframes curve-perspective {
+  0%, 100% {
+    transform: translateZ(15px) rotateY(-12deg) scale(0.95);
+  }
+  50% {
+    transform: translateZ(0px) rotateY(0deg) scale(1);
+  }
+}
+
+/* Pause on hover */
+.ticker-scroll-container:hover .ticker-scroll {
+  animation-play-state: paused;
+}
+
+.ticker-scroll-container:hover .ticker-item {
   animation-play-state: paused;
 }
 </style>
