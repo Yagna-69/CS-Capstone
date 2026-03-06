@@ -192,8 +192,10 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -306,19 +308,26 @@ async function handleSignup() {
     alert('Please fill in all fields')
     return
   }
-  
+
   if (password.value !== confirmPassword.value) {
     alert('Passwords do not match')
     return
   }
 
   loading.value = true
-  
-  setTimeout(() => {
+  try {
+    const result = await authStore.signup(email.value, password.value)
+    if (result.requiresConfirmation) {
+      alert('Account created! Please verify your email before logging in.')
+      goToLogin()
+    } else {
+      router.push('/dashboard')
+    }
+  } catch (e) {
+    alert(e.response?.data?.detail || 'Signup failed. Please try again.')
+  } finally {
     loading.value = false
-    alert(`Account created for: ${email.value}`)
-    router.push('/')
-  }, 1000)
+  }
 }
 
 async function handleLogin() {
@@ -328,12 +337,14 @@ async function handleLogin() {
   }
 
   loading.value = true
-  
-  setTimeout(() => {
+  try {
+    await authStore.login(email.value, password.value)
+    router.push('/dashboard')
+  } catch (e) {
+    alert(e.response?.data?.detail || 'Invalid email or password.')
+  } finally {
     loading.value = false
-    alert(`Login attempted with email: ${email.value}`)
-    router.push('/')
-  }, 1000)
+  }
 }
 </script>
 

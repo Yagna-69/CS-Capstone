@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from routes import api_router
+from routes import api_router  # routes/ package — replaces the old routes.py
 
 app = FastAPI(
-    title="Capstone API",
-    description="Backend API for Capstone Project",
-    version="1.0.0"
+    title="FXTrade API",
+    description="Backend API for the FXTrade forex platform",
+    version="1.0.0",
 )
 
 app.add_middleware(

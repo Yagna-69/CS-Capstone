@@ -37,6 +37,3 @@ Thumbs.db
 htmlcov/
 .tox/
 
-# Docs and local files
-README.md
-*.md

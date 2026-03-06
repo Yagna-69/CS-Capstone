@@ -1,54 +1,72 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { forexApi } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const isLoginPage = computed(() => route.path === '/login')
 const searchQuery = ref('')
 const searchFocused = ref(false)
 
-// Toggle to show/hide the ticker jumbotron
 const showTicker = ref(true)
+const isSignedIn = computed(() => authStore.isLoggedIn)
 
-// Track user authentication status
-const isSignedIn = ref(false)
-
-// Base list of currencies - can be updated dynamically
+// Ticker state — seeded with static fallback so banner shows immediately
 const baseCurrencies = ref([
-  { pair: 'EUR/USD', price: '1.0823', trend: 'up' },
-  { pair: 'GBP/USD', price: '1.2645', trend: 'down' },
-  { pair: 'USD/JPY', price: '150.12', trend: 'up' },
-  { pair: 'AUD/USD', price: '0.6543', trend: 'up' },
-  { pair: 'USD/CAD', price: '1.3456', trend: 'down' },
-  { pair: 'USD/CHF', price: '0.8876', trend: 'up' },
-  { pair: 'NZD/USD', price: '0.6123', trend: 'down' },
-  { pair: 'EUR/GBP', price: '0.8554', trend: 'up' },
-  { pair: 'EUR/JPY', price: '162.45', trend: 'up' },
-  { pair: 'GBP/JPY', price: '189.76', trend: 'down' }
+  { pair: 'EUR/USD', price: '—', trend: 'up' },
+  { pair: 'GBP/USD', price: '—', trend: 'up' },
+  { pair: 'USD/JPY', price: '—', trend: 'up' },
+  { pair: 'AUD/USD', price: '—', trend: 'up' },
+  { pair: 'USD/CAD', price: '—', trend: 'up' },
+  { pair: 'USD/CHF', price: '—', trend: 'up' },
+  { pair: 'NZD/USD', price: '—', trend: 'up' },
+  { pair: 'EUR/GBP', price: '—', trend: 'up' },
+  { pair: 'EUR/JPY', price: '—', trend: 'up' },
+  { pair: 'GBP/JPY', price: '—', trend: 'up' },
 ])
 
-// Duplicated for infinite scroll
-const tickerItems = computed(() => {
-  return [...baseCurrencies.value, ...baseCurrencies.value, ...baseCurrencies.value]
-})
+const tickerItems = computed(() =>
+  [...baseCurrencies.value, ...baseCurrencies.value, ...baseCurrencies.value]
+)
 
-// Function to update ticker data - can be called from API/WebSocket later
-const updateTickerData = (newData) => {
-  baseCurrencies.value = newData
-}
-
-// Handle Trade button click
-const handleTradeClick = () => {
-  if (isSignedIn.value) {
-    router.push('/')
-  } else {
-    router.push('/login')
+// Fetch live rates and update ticker, tracking trend vs previous price
+let previousPrices = {}
+async function fetchTickerRates() {
+  try {
+    const { data } = await forexApi.getRates()
+    const rates = data.rates  // { "EURUSD": 1.0823, ... }
+    baseCurrencies.value = baseCurrencies.value.map(item => {
+      const key = item.pair.replace('/', '')   // "EUR/USD" -> "EURUSD"
+      const newPrice = rates[key]
+      if (newPrice == null) return item
+      const prev = previousPrices[key]
+      const trend = prev == null ? item.trend : (newPrice >= prev ? 'up' : 'down')
+      previousPrices[key] = newPrice
+      return { pair: item.pair, price: newPrice.toFixed(4), trend }
+    })
+  } catch {
+    // keep showing last known prices on error
   }
 }
 
-// Expose updateTickerData for future use
+// Manual override (kept for backwards-compat with defineExpose)
+const updateTickerData = (newData) => { baseCurrencies.value = newData }
+
+const handleTradeClick = () => {
+  router.push(isSignedIn.value ? '/trading' : '/login')
+}
+
 defineExpose({ updateTickerData })
+
+let tickerInterval = null
+onMounted(() => {
+  fetchTickerRates()
+  tickerInterval = setInterval(fetchTickerRates, 60_000)
+})
+onUnmounted(() => clearInterval(tickerInterval))
 </script>
 
 <template>

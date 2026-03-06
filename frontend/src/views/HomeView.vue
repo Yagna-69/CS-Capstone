@@ -97,7 +97,7 @@ import { ref } from 'vue'
 import PriceChart from '@/components/PriceChart.vue'
 import CurrencyCard from '@/components/CurrencyCard.vue'
 import PortfolioCard from '@/components/PortfolioCard.vue'
-import { api } from '@/services/api'
+import axios from 'axios'
 
 const checking = ref(false)
 const healthStatus = ref(null)
@@ -106,10 +106,10 @@ async function checkHealth() {
   checking.value = true
   healthStatus.value = null
   try {
-    const response = await api.healthCheck()
+    const response = await axios.get('http://localhost:8000/health')
     healthStatus.value = {
       status: 'success',
-      message: `Backend is ${response.status}!`
+      message: `Backend is ${response.data.status}!`
     }
   } catch (error) {
     healthStatus.value = {

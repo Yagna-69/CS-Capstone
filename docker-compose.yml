@@ -10,9 +10,12 @@ services:
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=http://localhost:5173
+      - BROKER_USER_ID=${BROKER_USER_ID}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     env_file:
       - ./backend/.env
     volumes:
@@ -28,7 +31,7 @@ services:
     depends_on:
       - backend
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://backend:8000
 
 networks:
   default:

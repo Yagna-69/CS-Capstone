@@ -54,4 +54,15 @@ const router = createRouter({
   ]
 })
 
+const PROTECTED = ['dashboard', 'trading', 'settings', 'llm', 'news']
+
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('access_token')
+  if (PROTECTED.includes(to.name) && !token) {
+    next({ name: 'login' })
+  } else {
+    next()
+  }
+})
+
 export default router

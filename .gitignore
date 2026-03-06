@@ -7,6 +7,14 @@
 !.env.production
 
 # Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+ENV/
+.venv
 backend/__pycache__/
 backend/*.py[cod]
 backend/*$py.class
