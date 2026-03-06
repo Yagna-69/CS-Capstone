@@ -53,9 +53,9 @@ defineExpose({ updateTickerData })
 
 <template>
   <div v-if="!isLoginPage" id="app" class="min-h-screen bg-bg-primary flex flex-col">
-    <header class="bg-bg-secondary border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-opacity-90">
-      <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16 gap-6">
+    <header class="bg-bg-secondary border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-opacity-90 w-full">
+      <nav class="w-full px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16 gap-6 max-w-full">
           
           <!-- Left: Logo + Search Bar -->
           <div class="flex items-center gap-6 flex-shrink-0">
@@ -98,9 +98,9 @@ defineExpose({ updateTickerData })
           <!-- Right: Nav Links + Trade -->
           <div class="flex items-center gap-4 flex-shrink-0">
             <div class="hidden md:flex gap-2">
-              <RouterLink to="/" class="nav-link">Dashboard</RouterLink>
+              <RouterLink to="/dashboard" class="nav-link">Dashboard</RouterLink>
               <RouterLink to="/news" class="nav-link">News</RouterLink>
-              <RouterLink to="/ai" class="nav-link">Insight</RouterLink>
+              <RouterLink to="/settings" class="nav-link">Settings</RouterLink>
             </div>
             
             <button @click="handleTradeClick" class="px-6 py-2 bg-primary text-black rounded-full font-bold hover:bg-primary-dark transition-all text-sm">
@@ -126,7 +126,7 @@ defineExpose({ updateTickerData })
 }
 
 .nav-link.router-link-active {
-  @apply text-white bg-bg-card;
+  @apply text-primary;
 }
 
 .search-input {
