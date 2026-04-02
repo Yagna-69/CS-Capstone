@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     broker_user_id: str = ""
     # Gemini API key — reserved for future AI insight feature
     gemini_api_key: str = ""
+    newsapi_key: str = ""
 
     class Config:
         env_file = str(_BACKEND_DIR / ".env")

@@ -54,8 +54,11 @@ const formattedDate = computed(() => {
 })
 
 const handleClick = () => {
-  console.log('News story clicked:', props.story.id)
-  // TODO: Navigate to full article or open modal
+  if (props.story.url) {
+    window.open(props.story.url, '_blank', 'noopener')
+  } else {
+    console.log('News story clicked:', props.story.id)
+  }
 }
 </script>
 
@@ -90,6 +93,7 @@ const handleClick = () => {
 
 .featured-card .image-container {
   min-height: 100%;
+  position: relative;
 }
 
 .image-container img {
@@ -112,9 +116,20 @@ const handleClick = () => {
 
 .card-footer {
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  z-index: 10;
+}
+
+.featured-card .card-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem 1.5rem 1.5rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95), transparent);
 }
 
 .headline {

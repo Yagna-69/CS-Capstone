@@ -1,5 +1,36 @@
 <template>
   <div class="container mx-auto px-0 py-0">
+    <!-- Search Bar -->
+    <div class="mb-6">
+      <div class="flex gap-2">
+        <input
+          v-model="searchQuery"
+          @keyup.enter="performSearch"
+          type="text"
+          placeholder="Search financial news (e.g., 'bitcoin', 'fed rates', 'oil prices')..."
+          class="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          @click="performSearch"
+          class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
+          Search
+        </button>
+        <button
+          v-if="searchQuery"
+          @click="clearSearch"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <p v-if="loading" class="text-sm text-gray-300">Loading world news...</p>
+      <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
+    </div>
+
     <!-- Bento Box Grid - Top Featured Stories -->
     <div class="bento-grid mb-6">
       <NewsStoryCard
@@ -12,6 +43,10 @@
     </div>
 
     <!-- Regular News Stories Grid -->
+    <div v-if="!loading && !error && !featuredStories.length && !regularStories.length" class="text-center text-gray-400 py-20">
+      No news available right now. Try again in a moment.
+    </div>
+
     <div class="news-grid">
       <NewsStoryCard
         v-for="story in regularStories"
@@ -19,95 +54,127 @@
         :story="story"
       />
     </div>
+
+    <!-- Load More Button -->
+    <div v-if="currentSearchQuery && !loading && regularStories.length > 0" class="flex justify-center mt-8 mb-8">
+      <button
+        @click="loadMoreNews"
+        class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+      >
+        Load More Articles
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import NewsStoryCard from '@/components/NewsStoryCard.vue'
+import { newsApi } from '@/services/api'
 
-// Template data for featured stories (bento box)
-const featuredStories = ref([
-  {
-    id: 1,
-    headline: 'Federal Reserve Signals Potential Rate Cuts: USD Weakens Against Major Pairs',
-    date: '2024-03-09',
-    image: 'https://placehold.co/800x600/1a1a1a/FFD700?text=Fed+Rate+Decision',
-    size: 'large'
-  },
-  {
-    id: 2,
-    headline: 'EUR/USD Reaches New Monthly High Amid European Economic Growth',
-    date: '2024-03-09',
-    image: 'https://placehold.co/600x400/1a1a1a/FFD700?text=EUR+USD+Rally',
-    size: 'medium'
-  },
-  {
-    id: 3,
-    headline: 'Bank of Japan Maintains Ultra-Loose Policy: JPY Continues Decline',
-    date: '2024-03-08',
-    image: 'https://placehold.co/600x400/1a1a1a/FFD700?text=BOJ+Policy',
-    size: 'medium'
-  }
-])
+const featuredStories = ref([])
+const regularStories = ref([])
+const error = ref(null)
+const loading = ref(false)
+const searchQuery = ref('')
+const currentSearchQuery = ref(null)  // Track active search for Load More button
+const moreCount = ref(0)  // Track how many "load more" calls have been made
 
-// Template data for regular stories
-const regularStories = ref([
-  {
-    id: 4,
-    headline: 'GBP/USD Volatility Increases Following UK Inflation Data Release',
-    date: '2024-03-08',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=GBP+Volatility'
-  },
-  {
-    id: 5,
-    headline: 'AUD/USD Strengthens on Positive Australian Employment Numbers',
-    date: '2024-03-07',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=AUD+Employment'
-  },
-  {
-    id: 6,
-    headline: 'USD/CAD Falls as Oil Prices Surge to Three-Month Highs',
-    date: '2024-03-07',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=CAD+Oil+Prices'
-  },
-  {
-    id: 7,
-    headline: 'Swiss Franc Gains Safe-Haven Status Amid Global Uncertainty',
-    date: '2024-03-06',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=CHF+Safe+Haven'
-  },
-  {
-    id: 8,
-    headline: 'EUR/GBP Technical Analysis: Key Support Level at 0.8500 Holds',
-    date: '2024-03-06',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=EUR+GBP+Technical'
-  },
-  {
-    id: 9,
-    headline: 'Chinese Yuan Stabilizes After PBOC Intervention in Currency Markets',
-    date: '2024-03-05',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=CNY+Stabilization'
-  },
-  {
-    id: 10,
-    headline: 'NZD/USD Reaches 6-Month High on RBNZ Hawkish Stance',
-    date: '2024-03-05',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=NZD+Rally'
-  },
-  {
-    id: 11,
-    headline: 'Dollar Index (DXY) Shows Signs of Reversal at Key Technical Level',
-    date: '2024-03-04',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=DXY+Analysis'
-  },
-  {
-    id: 12,
-    headline: 'Emerging Market Currencies Rally as Risk Appetite Returns',
-    date: '2024-03-04',
-    image: 'https://placehold.co/400x300/1a1a1a/FFD700?text=EM+Currencies'
+async function loadNews(query = null) {
+  loading.value = true
+  error.value = null
+  moreCount.value = 0  // Reset pagination
+
+  try {
+    let allArticles = []
+
+    if (query) {
+      // Search with user query
+      currentSearchQuery.value = query
+      const { data } = await newsApi.getNews(undefined, 9, query)
+      if (data.status === 'ok' && data.articles) {
+        allArticles = data.articles
+      }
+    } else {
+      // Default: Get forex news
+      currentSearchQuery.value = null
+      const { data } = await newsApi.getNews(undefined, 9, "forex")
+      if (data.status === 'ok' && data.articles) {
+        allArticles = data.articles
+      }
+    }
+
+    const articles = allArticles.map((article, index) => ({
+      id: article.id || `${index}`,
+      headline: article.headline || article.title || 'Untitled',
+      date: article.date || '',
+      image: article.image || 'https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image',
+      url: article.url,
+      size: index === 0 ? 'large' : index <= 2 ? 'medium' : undefined,
+      source: article.source,
+    }))
+
+    featuredStories.value = articles.slice(0, 3)
+    regularStories.value = articles.slice(3)
+  } catch (err) {
+    const status = err.response?.status
+    const serverDetail = err.response?.data?.detail || err.response?.data?.message
+    error.value = serverDetail || `Unable to load news${status ? ` (HTTP ${status})` : ''}.`
+  } finally {
+    loading.value = false
   }
-])
+}
+
+function performSearch() {
+  if (searchQuery.value.trim()) {
+    loadNews(searchQuery.value.trim())
+  }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  loadNews()
+}
+
+async function loadMoreNews() {
+  if (!currentSearchQuery.value) return
+  
+  loading.value = true
+  error.value = null
+  moreCount.value += 1
+
+  try {
+    const { data } = await newsApi.getNews(undefined, 9, currentSearchQuery.value)
+    
+    if (data.status !== 'ok' || !data.articles) {
+      error.value = 'No more articles available'
+      return
+    }
+
+    // Convert and append new articles
+    const articles = data.articles.map((article, index) => ({
+      id: article.id || `more-${moreCount.value}-${index}`,
+      headline: article.headline || article.title || 'Untitled',
+      date: article.date || '',
+      image: article.image || 'https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image',
+      url: article.url,
+      source: article.source,
+    }))
+
+    // Append to regular stories (don't change featured)
+    regularStories.value.push(...articles)
+  } catch (err) {
+    const status = err.response?.status
+    const serverDetail = err.response?.data?.detail || err.response?.data?.message
+    error.value = serverDetail || `Unable to load more news${status ? ` (HTTP ${status})` : ''}.`
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadNews()
+})
 </script>
 
 <style scoped>

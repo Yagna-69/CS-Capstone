@@ -71,4 +71,8 @@ export const llmApi = {
   deleteKey:   (keyId)     => apiClient.delete(`/llm/keys/${keyId}`),
 }
 
+export const newsApi = {
+  getNews: (currency, limit, q) => apiClient.get('/news', { params: { currency, limit, q } }),
+}
+
 export default apiClient
