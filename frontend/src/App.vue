@@ -1,33 +1,60 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { forexApi } from '@/services/api'
+import { useForexStore } from '@/stores/forex'
+import { usePortfolioStore } from '@/stores/portfolio'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const forexStore = useForexStore()
+const portfolioStore = usePortfolioStore()
 const isLoginPage = computed(() => route.path === '/login')
 const searchQuery = ref('')
 const searchFocused = ref(false)
 const showSearchDropdown = ref(false)
+const searchBarRoot = ref(null)
+const showOnlyTradeable = ref(false)
+
+let searchBlurTimeoutId = null
+const clearSearchBlurTimeout = () => {
+  if (searchBlurTimeoutId != null) {
+    clearTimeout(searchBlurTimeoutId)
+    searchBlurTimeoutId = null
+  }
+}
+
+const collapseSearch = () => {
+  clearSearchBlurTimeout()
+  searchFocused.value = false
+  showSearchDropdown.value = false
+}
 
 const showTicker = ref(true)
 const isSignedIn = computed(() => authStore.isLoggedIn)
 
-// Ticker state — seeded with static fallback so banner shows immediately
-const baseCurrencies = ref([
-  { pair: 'EUR/USD', price: '—', trend: 'up' },
-  { pair: 'GBP/USD', price: '—', trend: 'up' },
-  { pair: 'USD/JPY', price: '—', trend: 'up' },
-  { pair: 'AUD/USD', price: '—', trend: 'up' },
-  { pair: 'USD/CAD', price: '—', trend: 'up' },
-  { pair: 'USD/CHF', price: '—', trend: 'up' },
-  { pair: 'NZD/USD', price: '—', trend: 'up' },
-  { pair: 'EUR/GBP', price: '—', trend: 'up' },
-  { pair: 'EUR/JPY', price: '—', trend: 'up' },
-  { pair: 'GBP/JPY', price: '—', trend: 'up' },
-])
+// Ticker: subscribe to forex store rates
+let previousPrices = {}
+const baseCurrencies = computed(() => {
+  const rates = forexStore.rates
+  const keys = Object.keys(rates).sort()
+  return keys.map((key) => {
+    const newPrice = rates[key]
+    const pair = `${key.slice(0, 3)}/${key.slice(3)}`
+    const prev = previousPrices[key]
+    const trend = prev == null ? 'up' : newPrice >= prev ? 'up' : 'down'
+    const pctSinceLastPoll =
+      prev != null && prev !== 0 ? ((newPrice - prev) / prev) * 100 : 0
+    previousPrices[key] = newPrice
+    return {
+      pair,
+      price: newPrice.toFixed(4),
+      trend,
+      pctSinceLastPoll
+    }
+  })
+})
 
 const tickerItems = computed(() =>
   [...baseCurrencies.value, ...baseCurrencies.value, ...baseCurrencies.value]
@@ -35,25 +62,69 @@ const tickerItems = computed(() =>
 
 // Search functionality
 const searchResults = computed(() => {
-  if (!searchQuery.value.trim()) return baseCurrencies.value.slice(0, 6)
+  let results = baseCurrencies.value
+  
+  // Filter by holdings if toggle is on
+  if (showOnlyTradeable.value && portfolioStore.holdings.length > 0) {
+    const heldCurrencies = portfolioStore.holdings.map(h => 
+      h['currency-ticker-symbol'] || h.currency
+    )
+    
+    // Get all available quote currencies
+    const allCurrencies = forexStore.currencies.map(c => c.code)
+    
+    // Generate synthetic pairs for held currencies that aren't in the rate feed
+    const syntheticPairs = []
+    heldCurrencies.forEach(base => {
+      allCurrencies.forEach(quote => {
+        if (base !== quote) {
+          const pairStr = `${base}/${quote}`
+          // Only add if not already in baseCurrencies
+          const exists = baseCurrencies.value.some(item => item.pair === pairStr)
+          if (!exists) {
+            syntheticPairs.push({
+              pair: pairStr,
+              price: '—',
+              trend: 'up',
+              pctSinceLastPoll: 0
+            })
+          }
+        }
+      })
+    })
+    
+    // Combine existing pairs with synthetic ones, then filter by held base currency
+    const allPairs = [...baseCurrencies.value, ...syntheticPairs]
+    results = allPairs.filter(item => {
+      const [base, quote] = item.pair.split('/')
+      return heldCurrencies.includes(base)
+    })
+  }
+  
+  // Apply search query filter
+  if (!searchQuery.value.trim()) return results
   
   const query = searchQuery.value.toLowerCase().replace(/[/\s]/g, '')
-  return baseCurrencies.value.filter(item => {
+  return results.filter(item => {
     const pairClean = item.pair.toLowerCase().replace(/[/\s]/g, '')
     return pairClean.includes(query)
-  }).slice(0, 6)
+  })
 })
 
 const handleSearchFocus = () => {
+  clearSearchBlurTimeout()
   searchFocused.value = true
   showSearchDropdown.value = true
+  nextTick(() => loadSearchSparklines())
 }
 
 const handleSearchBlur = () => {
-  // Delay to allow click on dropdown items
-  setTimeout(() => {
+  // Delay to allow mousedown/click on dropdown items (blur fires before click)
+  clearSearchBlurTimeout()
+  searchBlurTimeoutId = setTimeout(() => {
     searchFocused.value = false
     showSearchDropdown.value = false
+    searchBlurTimeoutId = null
   }, 200)
 }
 
@@ -63,68 +134,89 @@ const handleCurrencyClick = (pair) => {
     return
   }
   searchQuery.value = ''
-  showSearchDropdown.value = false
+  collapseSearch()
   router.push({ path: '/trading', query: { pair } })
 }
 
-const getPriceChange = (item) => {
-  // Calculate mock price change for display
-  const price = parseFloat(item.price)
-  if (isNaN(price)) return 0
-  return item.trend === 'up' ? 0.25 : -0.18
+/** % move since last poll (real, not mock). */
+function pctSinceLastPoll(item) {
+  const n = Number(item.pctSinceLastPoll)
+  return Number.isFinite(n) ? n : 0
 }
 
-// Generate mini chart data for each currency
-const getMiniChartData = (item) => {
-  const points = 12
-  const basePrice = parseFloat(item.price) || 1.0
-  const data = []
-  
-  for (let i = 0; i < points; i++) {
-    const variation = (Math.random() - 0.5) * 0.01
-    const trend = item.trend === 'up' ? 0.0002 * i : -0.0002 * i
-    data.push(basePrice + variation + trend)
-  }
-  
-  return data
+/** Get all closes from 1-day data for sparkline. */
+function getCloses1d(candles) {
+  if (!candles?.length) return []
+  return candles.map((c) => c.close).filter((n) => n > 0 && Number.isFinite(n))
 }
 
-const getMiniChartPath = (data) => {
-  if (!data || data.length === 0) return ''
-  
+/** Calculate % change from first to last candle in 1d data. */
+function getChange1d(candles) {
+  if (!candles?.length || candles.length < 2) return 0
+  const first = candles[0].close
+  const last = candles[candles.length - 1].close
+  if (!first || first === 0) return 0
+  return ((last - first) / first) * 100
+}
+
+function getMiniChartPath(data) {
+  if (!data || data.length < 2) return ''
   const width = 80
   const height = 24
   const min = Math.min(...data)
   const max = Math.max(...data)
   const range = max - min || 1
-  
-  const points = data.map((value, index) => {
-    const x = (index / (data.length - 1)) * width
-    const y = height - ((value - min) / range) * height
-    return `${x},${y}`
-  }).join(' ')
-  
-  return `M ${points.split(' ').join(' L ')}`
+  return (
+    'M ' +
+    data
+      .map((value, index) => {
+        const x = (index / (data.length - 1)) * width
+        const y = height - ((value - min) / range) * height
+        return `${x},${y}`
+      })
+      .join(' L ')
+  )
 }
 
-// Fetch live rates and update ticker, tracking trend vs previous price
-let previousPrices = {}
-async function fetchTickerRates() {
-  try {
-    const { data } = await forexApi.getRates()
-    const rates = data.rates  // { "EURUSD": 1.0823, ... }
-    baseCurrencies.value = baseCurrencies.value.map(item => {
-      const key = item.pair.replace('/', '')   // "EUR/USD" -> "EURUSD"
-      const newPrice = rates[key]
-      if (newPrice == null) return item
-      const prev = previousPrices[key]
-      const trend = prev == null ? item.trend : (newPrice >= prev ? 'up' : 'down')
-      previousPrices[key] = newPrice
-      return { pair: item.pair, price: newPrice.toFixed(4), trend }
+const searchSparklines = ref({})  // { 'EUR/USD': { closes: [...], change1d: 0.5 } }
+
+async function loadSearchSparklines() {
+  if (!showSearchDropdown.value || searchResults.value.length === 0) return
+  const pairs = searchResults.value.map((r) => r.pair)
+  const next = { ...searchSparklines.value }
+  await Promise.all(
+    pairs.map(async (pair) => {
+      const parts = pair.split('/')
+      if (parts.length !== 2) return
+      const [f, t] = parts
+      const cached = forexStore.getCachedPairHistory(f, t, '1d')
+      const candles = cached?.candles || []
+      if (candles.length > 0) {
+        next[pair] = {
+          closes: getCloses1d(candles),
+          change1d: getChange1d(candles)
+        }
+      } else {
+        const result = await forexStore.fetchPairHistory(f, t, '1d')
+        const newCandles = result.candles || []
+        next[pair] = {
+          closes: getCloses1d(newCandles),
+          change1d: getChange1d(newCandles)
+        }
+      }
     })
-  } catch {
-    // keep showing last known prices on error
-  }
+  )
+  searchSparklines.value = next
+}
+
+function searchMiniPath(pair) {
+  const data = searchSparklines.value[pair]
+  return getMiniChartPath(data?.closes || [])
+}
+
+function searchChange1d(pair) {
+  const data = searchSparklines.value[pair]
+  return data?.change1d || 0
 }
 
 // Manual override (kept for backwards-compat with defineExpose)
@@ -136,12 +228,29 @@ const handleTradeClick = () => {
 
 defineExpose({ updateTickerData })
 
+function onSearchPointerDownOutside(event) {
+  const root = searchBarRoot.value
+  if (!root || root.contains(event.target)) return
+  collapseSearch()
+}
+
+watch(
+  () => searchResults.value.map((r) => r.pair).join('|'),
+  () => {
+    if (showSearchDropdown.value) loadSearchSparklines()
+  }
+)
+
 let tickerInterval = null
 onMounted(() => {
-  fetchTickerRates()
-  tickerInterval = setInterval(fetchTickerRates, 60_000)
+  forexStore.startPipeline()
+  document.addEventListener('pointerdown', onSearchPointerDownOutside, true)
 })
-onUnmounted(() => clearInterval(tickerInterval))
+onUnmounted(() => {
+  forexStore.stopPipeline()
+  clearSearchBlurTimeout()
+  document.removeEventListener('pointerdown', onSearchPointerDownOutside, true)
+})
 </script>
 
 <template>
@@ -154,7 +263,7 @@ onUnmounted(() => clearInterval(tickerInterval))
           <div class="flex items-center gap-6 flex-shrink-0 relative z-20">
             <RouterLink to="/" class="text-3xl font-bold font-goldman text-primary hover:opacity-80 transition">FXTrade</RouterLink>
             
-            <div class="relative hidden sm:block">
+            <div ref="searchBarRoot" class="relative hidden sm:block">
               <input
                 v-model="searchQuery"
                 type="text"
@@ -162,7 +271,8 @@ onUnmounted(() => clearInterval(tickerInterval))
                 autocomplete="off"
                 @focus="handleSearchFocus"
                 @blur="handleSearchBlur"
-                class="search-input w-48 focus:w-64 px-4 py-2 pl-10 bg-bg-primary border border-gray-700 rounded-full text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-all duration-300 text-sm"
+                class="search-input px-4 py-2 pl-10 bg-bg-primary border border-gray-700 rounded-full text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-all duration-300 text-sm"
+                :class="searchFocused ? 'w-64' : 'w-48'"
               />
               <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 transition-colors" :class="{ 'text-primary': searchFocused }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -170,51 +280,77 @@ onUnmounted(() => clearInterval(tickerInterval))
               
               <!-- Search Dropdown -->
               <div 
-                v-if="showSearchDropdown && searchResults.length > 0" 
-                class="search-dropdown absolute top-full left-0 mt-2 bg-black border border-gray-800 rounded-xl shadow-2xl overflow-hidden z-50 w-80"
+                v-if="showSearchDropdown" 
+                class="search-dropdown absolute top-full left-0 mt-2 bg-black border border-gray-800 rounded-xl shadow-2xl overflow-hidden z-50 w-80 flex flex-col"
+                style="max-height: 400px;"
               >
-                <div class="py-2">
-                  <div
-                    v-for="item in searchResults"
-                    :key="item.pair"
-                    @click="handleCurrencyClick(item.pair)"
-                    class="flex items-center justify-between px-4 py-3 hover:bg-gray-900 transition cursor-pointer group"
-                  >
-                    <div class="flex-1">
-                      <p 
-                        class="font-bold text-sm transition"
-                        :class="item.trend === 'up' ? 'text-green-400' : 'text-red-400'"
-                      >
-                        {{ item.pair }}
-                      </p>
-                      <p class="text-xs text-gray-500 mt-0.5">{{ item.pair.split('/')[0] }} to {{ item.pair.split('/')[1] }}</p>
+                <!-- Scrollable Currency List -->
+                <div class="overflow-y-auto flex-1">
+                  <div v-if="searchResults.length > 0" class="py-2">
+                    <div
+                      v-for="item in searchResults"
+                      :key="item.pair"
+                      @click="handleCurrencyClick(item.pair)"
+                      class="flex items-center justify-between px-4 py-3 hover:bg-gray-900 transition cursor-pointer group"
+                    >
+                      <div class="flex-1">
+                        <p 
+                          class="font-bold text-sm transition"
+                          :class="searchChange1d(item.pair) >= 0 ? 'text-green-400' : 'text-red-400'"
+                        >
+                          {{ item.pair }}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-0.5">{{ item.pair.split('/')[0] }} to {{ item.pair.split('/')[1] }}</p>
+                      </div>
+                      
+                      <div class="mx-4 flex-shrink-0">
+                        <svg width="80" height="24" class="mini-chart">
+                          <path
+                            v-if="searchMiniPath(item.pair)"
+                            :d="searchMiniPath(item.pair)"
+                            fill="none"
+                            :stroke="searchChange1d(item.pair) >= 0 ? '#10b981' : '#ef4444'"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </div>
+
+                      <div class="text-right">
+                        <p class="font-mono text-sm text-white">{{ item.price }}</p>
+                        <p class="text-xs font-semibold" :class="searchChange1d(item.pair) >= 0 ? 'text-green-400' : 'text-red-400'">
+                          {{ searchChange1d(item.pair) >= 0 ? '+' : '' }}{{ searchChange1d(item.pair).toFixed(2) }}%
+                        </p>
+                      </div>
                     </div>
-                    
-                    <!-- Mini Chart -->
-                    <div class="mx-4">
-                      <svg width="80" height="24" class="mini-chart">
-                        <path
-                          :d="getMiniChartPath(getMiniChartData(item))"
-                          fill="none"
-                          :stroke="item.trend === 'up' ? '#10b981' : '#ef4444'"
-                          stroke-width="1.5"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </div>
-                    
-                    <div class="text-right">
-                      <p class="font-mono text-sm text-white">{{ item.price }}</p>
-                      <p class="text-xs font-semibold" :class="item.trend === 'up' ? 'text-green-400' : 'text-red-400'">
-                        {{ item.trend === 'up' ? '+' : '' }}{{ getPriceChange(item).toFixed(2) }}%
-                      </p>
-                    </div>
+                  </div>
+                  
+                  <div v-else class="px-4 py-6 text-center text-gray-500 text-sm">
+                    {{ showOnlyTradeable ? 'No tradeable pairs with your holdings' : 'No currencies found' }}
                   </div>
                 </div>
                 
-                <div v-if="searchQuery && searchResults.length === 0" class="px-4 py-6 text-center text-gray-500 text-sm">
-                  No currencies found
+                <!-- Fixed Filter Toggle at Bottom -->
+                <div class="border-t border-gray-800 px-4 py-2.5 bg-bg-secondary/50 flex-shrink-0">
+                  <button
+                    @click="showOnlyTradeable = !showOnlyTradeable"
+                    class="w-full flex items-center justify-between text-xs font-semibold transition-all hover:bg-gray-900 rounded-lg px-2 py-1.5"
+                  >
+                    <span class="text-gray-400">Only show tradeable pairs</span>
+                    <div :class="[
+                      'w-9 h-5 rounded-full transition-all relative',
+                      showOnlyTradeable ? 'bg-primary' : 'bg-gray-700'
+                    ]">
+                      <div :class="[
+                        'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all',
+                        showOnlyTradeable ? 'left-4' : 'left-0.5'
+                      ]"></div>
+                    </div>
+                  </button>
+                  <p v-if="showOnlyTradeable" class="text-xs text-gray-500 mt-1.5 italic">
+                    Showing pairs you can trade with your holdings
+                  </p>
                 </div>
               </div>
             </div>

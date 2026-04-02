@@ -7,32 +7,153 @@
       <!-- Left: TradingView Chart -->
       <div class="chart-section glass p-6 rounded-xl">
         <div class="flex items-center justify-between mb-4">
-          <div>
+          <div class="flex items-center gap-3">
             <h2 class="text-xl font-bold text-white">{{ chartPair }}</h2>
-            <div class="flex items-center gap-4 mt-1">
+            <!-- Wishlist Heart Icon -->
+            <button
+              @click="toggleWishlist"
+              class="p-1.5 rounded-lg transition-all hover:bg-primary/10"
+              :title="isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'"
+            >
+              <svg 
+                v-if="isWishlisted" 
+                class="w-6 h-6 text-primary fill-current" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor" 
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <svg 
+                v-else 
+                class="w-6 h-6 text-primary" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor" 
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </button>
+          </div>
+          
+          <!-- Center: Chart Type Icons (No Labels) -->
+          <div class="flex gap-2 flex-shrink-0">
+            <button
+              v-for="type in chartTypes"
+              :key="type.id"
+              @click="selectChartType(type.id)"
+              :class="[
+                'p-2 rounded-lg border-2 transition-all',
+                chartType === type.id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white'
+              ]"
+              :title="type.label"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" :d="type.icon" />
+              </svg>
+            </button>
+          </div>
+          
+          <div class="flex items-center gap-4">
+            <span v-if="chartLoading" class="text-sm text-gray-500">Loading chart…</span>
+            <template v-else>
               <span class="text-2xl font-mono text-white">{{ currentPrice.toFixed(4) }}</span>
               <span :class="['text-sm font-bold', priceChange >= 0 ? 'text-green-400' : 'text-red-400']">
                 {{ priceChange >= 0 ? '+' : '' }}{{ priceChange.toFixed(2) }}%
               </span>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <select
-              v-model="chartPair"
-              @change="updateChartPair"
-              class="px-4 py-2 bg-bg-primary border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary"
+            </template>
+            <!-- Fullscreen Toggle Button -->
+            <button
+              @click="toggleFullscreen"
+              class="p-2 rounded-lg border-2 border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white transition-all"
+              :title="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'"
             >
-              <option v-for="pair in tradingPairs" :key="pair" :value="pair">{{ pair }}</option>
-            </select>
+              <svg v-if="!isFullscreen" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+              </svg>
+            </button>
           </div>
         </div>
+        <p v-if="chartError" class="text-xs text-red-400 mb-2">{{ chartError }}</p>
         <div ref="chartContainer" class="chart-container"></div>
+        
+        <!-- RSI Chart (shown when RSI indicator is active) -->
+        <div v-if="activeIndicators.includes('rsi')" class="mt-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-bold text-gray-400">RSI (14)</span>
+          </div>
+          <div ref="rsiChartContainer" class="rsi-chart-container"></div>
+        </div>
+        
+        <!-- Chart Controls Row -->
+        <div class="flex items-center justify-between mt-3 gap-6">
+          <!-- Left: Timeline Slider -->
+          <div class="w-60 pl-0 pr-4 mb-4">
+            <div class="relative">
+              <!-- Timeline Track -->
+              <div class="absolute top-1/2 -translate-y-1/2 w-full h-0.5 bg-gray-700"></div>
+              
+              <!-- Timeline Stops -->
+              <div class="relative flex justify-between items-center">
+                <button
+                  v-for="(period, index) in timelinePeriods"
+                  :key="period.value"
+                  @click="selectPeriod(period.value)"
+                  class="relative flex flex-col items-center group"
+                  :title="`${period.label} - ${getPeriodDateLabel(period.value)}`"
+                >
+                  <!-- Stop Circle -->
+                  <div :class="[
+                    'w-3 h-3 rounded-full border-2 transition-all cursor-pointer z-10',
+                    chartHistoryPeriod === period.value
+                      ? 'bg-primary border-primary scale-125 shadow-lg shadow-primary/50'
+                      : 'bg-bg-primary border-gray-600 group-hover:border-primary group-hover:scale-110'
+                  ]"></div>
+                  
+                  <!-- Label Below -->
+                  <span :class="[
+                    'absolute top-5 text-xs font-semibold whitespace-nowrap transition-all',
+                    chartHistoryPeriod === period.value
+                      ? 'text-primary'
+                      : 'text-gray-500 group-hover:text-gray-300'
+                  ]">
+                    {{ period.label }}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Technical Indicators -->
+          <div class="flex gap-2 flex-shrink-0">
+            <button
+              v-for="indicator in technicalIndicators"
+              :key="indicator.id"
+              @click="toggleIndicator(indicator.id)"
+              :class="[
+                'px-1.5 py-2 rounded-lg text-xs font-bold transition-all border-2',
+                activeIndicators.includes(indicator.id)
+                  ? 'bg-green-600 border-green-600 text-white'
+                  : 'bg-bg-primary text-gray-400 border-gray-700 hover:text-white hover:border-gray-600'
+              ]"
+              :title="indicator.name"
+            >
+              {{ indicator.label }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Right: Trading Widgets Sidebar -->
       <div class="widgets-sidebar">
         <!-- Exchange Widget -->
-        <div class="glass p-4 rounded-xl">
+        <div class="glass p-4 rounded-xl flex flex-col h-full">
           <h3 class="text-sm font-bold text-white mb-3">Exchange Currency</h3>
 
           <!-- Order Type & Buy/Sell Row -->
@@ -89,21 +210,17 @@
 
           <!-- Currency Pair (Locked to Chart) -->
           <div class="mb-4">
-            <label class="text-xs text-gray-400 mb-1.5 block font-medium">Currency Pair</label>
+            <label class="text-xs text-gray-400 mb-1.5 block font-medium">Currency Pair (locked to chart)</label>
             <div class="flex items-center gap-2">
               <!-- From Currency (Display Only) -->
               <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
                 <span class="text-white text-sm font-bold">{{ fromCurrency }}</span>
               </div>
               
-              <!-- Swap Button -->
-              <button @click="swapCurrencies"
-                class="p-2 rounded-lg border-2 border-gray-700 text-gray-400 hover:border-primary hover:text-primary hover:bg-primary/10 transition-all">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-              </button>
+              <!-- Arrow Icon -->
+              <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
               
               <!-- To Currency (Display Only) -->
               <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
@@ -173,9 +290,12 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
-          v-for="article in relatedNews"
+        <a
+          v-for="article in relatedNews.slice(0, 3)"
           :key="article.id"
+          :href="article.url"
+          target="_blank"
+          rel="noopener noreferrer"
           class="bg-bg-primary rounded-lg p-4 hover:bg-bg-primary/80 transition cursor-pointer border border-gray-800 hover:border-primary/30"
         >
           <div>
@@ -188,7 +308,7 @@
               <span>{{ article.time }}</span>
             </div>
           </div>
-        </div>
+        </a>
       </div>
     </div>
 
@@ -258,20 +378,323 @@
       </div>
     </div>
   </div>
+
+  <!-- Fullscreen Mode Overlay with Split Layout -->
+  <Teleport to="body">
+    <div v-if="isFullscreen" class="fixed inset-0 z-50 bg-bg-primary flex">
+      <!-- Main Chart Section (80%) -->
+      <div class="flex flex-col" style="width: 80%;">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+          <div class="flex items-center gap-4">
+            <span class="text-2xl font-bold text-white">{{ chartPair }}</span>
+            <span class="text-2xl font-mono text-white">{{ currentPrice.toFixed(4) }}</span>
+            <span :class="['text-lg font-bold', priceChange >= 0 ? 'text-green-400' : 'text-red-400']">
+              {{ priceChange >= 0 ? '+' : '' }}{{ priceChange.toFixed(2) }}%
+            </span>
+          </div>
+          
+          <!-- Chart Type Icons -->
+          <div class="flex gap-2">
+            <button
+              v-for="type in chartTypes"
+              :key="type.id"
+              @click="selectChartType(type.id)"
+              :class="[
+                'p-2 rounded-lg border-2 transition-all',
+                chartType === type.id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white'
+              ]"
+              :title="type.label"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" :d="type.icon" />
+              </svg>
+            </button>
+          </div>
+          
+          <button
+            @click="toggleFullscreen"
+            class="p-2 rounded-lg border-2 border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white transition-all"
+            title="Exit Fullscreen"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Chart Area -->
+        <div class="flex-1 flex flex-col px-6 py-4 min-h-0">
+          <div class="flex-1 relative min-h-0">
+            <div ref="chartContainerFullscreen" class="w-full h-full"></div>
+          </div>
+          
+          <!-- RSI Chart (if active) -->
+          <div v-if="activeIndicators.includes('rsi')" class="mt-2" style="height: 120px;">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold text-gray-400">RSI (14)</span>
+            </div>
+            <div ref="rsiChartContainerFullscreen" class="w-full h-full"></div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex items-center justify-between px-6 py-4 gap-6 border-t border-gray-800">
+          <!-- Left: Timeline Slider -->
+          <div class="w-80 pl-0 pr-4">
+            <div class="relative">
+              <div class="absolute top-1/2 -translate-y-1/2 w-full h-0.5 bg-gray-700"></div>
+              <div class="relative flex justify-between items-center">
+                <button
+                  v-for="period in timelinePeriods"
+                  :key="period.value"
+                  @click="selectPeriod(period.value)"
+                  class="relative flex flex-col items-center group"
+                  :title="`${period.label} - ${getPeriodDateLabel(period.value)}`"
+                >
+                  <div :class="[
+                    'w-3 h-3 rounded-full border-2 transition-all cursor-pointer z-10',
+                    chartHistoryPeriod === period.value
+                      ? 'bg-primary border-primary scale-125 shadow-lg shadow-primary/50'
+                      : 'bg-bg-primary border-gray-600 group-hover:border-primary group-hover:scale-110'
+                  ]"></div>
+                  <span :class="[
+                    'absolute top-5 text-xs font-semibold whitespace-nowrap transition-all',
+                    chartHistoryPeriod === period.value
+                      ? 'text-primary'
+                      : 'text-gray-500 group-hover:text-gray-300'
+                  ]">
+                    {{ period.label }}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Technical Indicators -->
+          <div class="flex gap-2 flex-shrink-0">
+            <button
+              v-for="indicator in technicalIndicators"
+              :key="indicator.id"
+              @click="toggleIndicator(indicator.id)"
+              :class="[
+                'px-1.5 py-2 rounded-lg text-xs font-bold transition-all border-2',
+                activeIndicators.includes(indicator.id)
+                  ? 'bg-green-600 border-green-600 text-white'
+                  : 'bg-bg-primary text-gray-400 border-gray-700 hover:text-white hover:border-gray-600'
+              ]"
+              :title="indicator.name"
+            >
+              {{ indicator.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exchange Widget Sidebar (20%) -->
+      <div class="border-l border-gray-800 bg-bg-secondary flex flex-col" style="width: 20%; min-width: 320px;">
+        <!-- Tabs -->
+        <div class="flex border-b border-gray-700">
+          <button
+            v-for="tab in ['exchange', 'news']"
+            :key="tab"
+            @click="activeTab = tab"
+            :class="[
+              'flex-1 py-3 px-4 text-sm font-bold capitalize transition-all',
+              activeTab === tab
+                ? 'text-primary border-b-2 border-primary bg-primary/5'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            ]"
+          >
+            {{ tab }}
+          </button>
+        </div>
+
+        <!-- Tab Content (scrollable) -->
+        <div class="flex-1 overflow-y-auto p-4">
+          <!-- Exchange Tab -->
+          <div v-if="activeTab === 'exchange'" class="space-y-4">
+            <!-- Order Type & Buy/Sell Row -->
+            <div>
+              <label class="text-xs text-gray-400 mb-1.5 block font-medium">Order Type</label>
+              <div class="flex flex-col gap-2">
+                <div class="relative">
+                  <select v-model="orderType"
+                    class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
+                    <option value="Market">Market Order</option>
+                    <option value="Limit">Limit Order</option>
+                    <option value="Stop">Stop Order</option>
+                    <option value="Stop-Limit">Stop-Limit Order</option>
+                  </select>
+                  <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                
+                <div class="flex rounded-lg border-2 border-gray-700 overflow-hidden">
+                  <button
+                    @click="orderSide = 'buy'"
+                    :class="[
+                      'flex-1 py-2.5 text-sm font-bold transition-all',
+                      orderSide === 'buy' 
+                        ? 'bg-green-600 text-white' 
+                        : 'bg-bg-primary text-gray-400 hover:text-white'
+                    ]"
+                  >
+                    Buy
+                  </button>
+                  <button
+                    @click="orderSide = 'sell'"
+                    :class="[
+                      'flex-1 py-2.5 text-sm font-bold transition-all',
+                      orderSide === 'sell' 
+                        ? 'bg-red-600 text-white' 
+                        : 'bg-bg-primary text-gray-400 hover:text-white'
+                    ]"
+                  >
+                    Sell
+                  </button>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 mt-1.5 italic">
+                {{ orderType === 'Market' ? 'Execute immediately at current price' : 
+                   orderType === 'Limit' ? 'Execute at specified price or better' :
+                   orderType === 'Stop' ? 'Execute when price reaches stop level' :
+                   'Execute at limit price after stop is triggered' }}
+              </p>
+            </div>
+
+            <!-- Currency Pair (Locked to Chart) -->
+            <div>
+              <label class="text-xs text-gray-400 mb-1.5 block font-medium">Currency Pair</label>
+              <div class="flex items-center gap-2">
+                <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
+                  <span class="text-white text-sm font-bold">{{ fromCurrency }}</span>
+                </div>
+                <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+                <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
+                  <span class="text-white text-sm font-bold">{{ toCurrency }}</span>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 mt-1.5">
+                Balance: <span class="text-gray-300 font-semibold">{{ exchangeFromBalance.toFixed(2) }} {{ fromCurrency }}</span>
+              </p>
+            </div>
+
+            <!-- Amount Input -->
+            <div>
+              <label class="text-xs text-gray-400 mb-1.5 block font-medium">Amount</label>
+              <div class="relative">
+                <input
+                  v-model.number="exchangeAmount"
+                  type="number" min="0.01" step="0.01" placeholder="0.00"
+                  @input="computeReceive"
+                  class="w-full px-3 py-2.5 bg-bg-primary border-2 border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary transition-all font-mono"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">{{ fromCurrency }}</span>
+              </div>
+            </div>
+
+            <!-- Rate & Preview -->
+            <div v-if="currentRate" class="bg-bg-primary rounded-lg px-3 py-2 space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span class="text-gray-400">Rate</span>
+                <span class="text-primary font-mono">1 {{ fromCurrency }} = {{ currentRate.toFixed(6) }} {{ toCurrency }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Spread</span>
+                <span class="text-gray-300 font-mono">0.0002</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Fee</span>
+                <span class="text-green-400 font-semibold">0%</span>
+              </div>
+              <div v-if="receiveAmount" class="flex justify-between pt-1 border-t border-gray-800">
+                <span class="text-gray-400">You receive</span>
+                <span class="text-green-400 font-mono font-bold">{{ receiveAmount.toFixed(6) }} {{ toCurrency }}</span>
+              </div>
+            </div>
+            <div v-else-if="rateLoading" class="text-gray-500 text-xs">Fetching rate...</div>
+            <div v-else-if="rateError" class="text-red-400 text-xs">{{ rateError }}</div>
+
+            <!-- Error/Success Messages -->
+            <div v-if="tradeError" class="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p class="text-sm text-red-400">{{ tradeError }}</p>
+            </div>
+            <div v-if="tradeSuccess" class="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <p class="text-sm text-green-400">{{ tradeSuccess }}</p>
+            </div>
+
+            <!-- Execute Trade Button -->
+            <button
+              @click="executeTrade"
+              :disabled="tradeLoading || !currentRate || !exchangeAmount"
+              :class="[
+                'w-full py-3 rounded-lg font-bold text-white transition-all shadow-lg',
+                orderSide === 'buy'
+                  ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 shadow-green-600/30'
+                  : 'bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 shadow-red-600/30',
+                (tradeLoading || !currentRate || !exchangeAmount) && 'opacity-50 cursor-not-allowed'
+              ]"
+            >
+              {{ tradeLoading ? 'Processing...' : `Execute ${orderSide === 'buy' ? 'Buy' : 'Sell'} Order` }}
+            </button>
+          </div>
+
+          <!-- News Tab -->
+          <div v-if="activeTab === 'news'" class="space-y-3">
+            <a
+              v-for="article in relatedNews.slice(0, 3)"
+              :key="article.id"
+              :href="article.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block p-3 rounded-lg bg-gradient-to-br from-bg-primary to-bg-secondary border border-gray-700 hover:border-gray-600 transition-all cursor-pointer"
+            >
+              <h4 class="text-sm font-semibold text-white mb-1 leading-snug">{{ article.headline }}</h4>
+              <div class="flex items-center justify-between text-xs text-gray-400">
+                <span>{{ article.source }}</span>
+                <span>{{ article.time }}</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { tradeApi, forexApi } from '@/services/api'
+import { tradeApi } from '@/services/api'
 import { usePortfolioStore } from '@/stores/portfolio'
+import { useForexStore } from '@/stores/forex'
+import { useNewsStore } from '@/stores/news'
 import { createChart } from 'lightweight-charts'
 
 const route = useRoute()
 const portfolioStore = usePortfolioStore()
+const forexStore = useForexStore()
+const newsStore = useNewsStore()
+
+// Wishlist functionality
+const isWishlisted = computed(() => portfolioStore.isInWishlist(chartPair.value))
+
+function toggleWishlist() {
+  portfolioStore.toggleWishlist(chartPair.value)
+}
 
 // ── Currencies ───────────────────────────────────────────────────────────
-const currencies = ref([])  // [{code, name}, ...]
+const currencies = computed(() => forexStore.currencies)
+
+async function fetchCurrencies() {
+  // No-op: currencies come from forex store pipeline
+}
 
 // Generate all valid trading pairs from the currencies list
 const tradingPairs = computed(() => {
@@ -292,42 +715,88 @@ const tradingPairs = computed(() => {
   return pairs
 })
 
-async function fetchCurrencies() {
-  try {
-    const { data } = await forexApi.getCurrencies()
-    currencies.value = data.currencies
-  } catch {
-    // Fallback to minimal set if endpoint fails
-    currencies.value = [
-      { code: 'USD', name: 'US Dollar' },
-      { code: 'EUR', name: 'Euro' },
-      { code: 'GBP', name: 'British Pound' },
-      { code: 'JPY', name: 'Japanese Yen' },
-      { code: 'AUD', name: 'Australian Dollar' },
-      { code: 'CAD', name: 'Canadian Dollar' },
-    ]
-  }
-}
-
 // ── Chart ─────────────────────────────────────────────────────────────────
 const chartContainer = ref(null)
+const chartContainerFullscreen = ref(null)
+const rsiChartContainer = ref(null)
+const rsiChartContainerFullscreen = ref(null)
 const chartPair = ref('EUR/USD')
-const currentPrice = ref(1.0876)
-const priceChange = ref(0.45)
+const chartHistoryPeriod = ref('3mo')
+const chartType = ref('candlestick')
+const activeIndicators = ref([])  // Array of active indicator IDs
+const currentPrice = ref(0)
+const priceChange = ref(0)
+const chartLoading = ref(false)
+const chartError = ref('')
+const isFullscreen = ref(false)
 let chart = null
+let rsiChart = null
 let candlestickSeries = null
+let lineSeries = null
+let areaSeries = null
+let baselineSeries = null
+
+// Indicator line series (will be created on demand)
+let ma20Series = null
+let ma50Series = null
+let ema12Series = null
+let ema26Series = null
+let rsiSeries = null
+
+const timelinePeriods = [
+  { label: '1D', value: '1d' },
+  { label: '1W', value: '1wk' },
+  { label: '1M', value: '1mo' },
+  { label: '3M', value: '3mo' },
+  { label: 'YTD', value: 'ytd' },
+  { label: '1Y', value: '1y' },
+  { label: '5Y', value: '5y' }
+]
+
+const technicalIndicators = [
+  { id: 'ma20', label: 'MA20', name: 'Moving Average 20' },
+  { id: 'ma50', label: 'MA50', name: 'Moving Average 50' },
+  { id: 'ema12', label: 'EMA12', name: 'Exponential MA 12' },
+  { id: 'ema26', label: 'EMA26', name: 'Exponential MA 26' },
+  { id: 'rsi', label: 'RSI', name: 'Relative Strength Index' }
+]
+
+const chartTypes = [
+  {
+    id: 'candlestick',
+    label: 'Candles',
+    icon: 'M3 10h18M3 14h18M8 3v18M16 3v18'
+  },
+  {
+    id: 'line',
+    label: 'Line',
+    icon: 'M3 17l6-6 4 4 8-8'
+  },
+  {
+    id: 'area',
+    label: 'Area',
+    icon: 'M3 17l6-6 4 4 8-8M3 21h18'
+  },
+  {
+    id: 'baseline',
+    label: 'Baseline',
+    icon: 'M3 12h18M3 17l6-6 4 4 8-8'
+  }
+]
 
 async function initChart() {
-  if (!chartContainer.value) return
+  const container = isFullscreen.value ? chartContainerFullscreen.value : chartContainer.value
+  if (!container) return
   
   // Wait for next tick to ensure DOM is fully rendered
   await nextTick()
   
-  const containerWidth = chartContainer.value.clientWidth
+  const containerWidth = container.clientWidth
+  const containerHeight = container.clientHeight || (isFullscreen.value ? 600 : 400)
   
-  chart = createChart(chartContainer.value, {
+  chart = createChart(container, {
     width: containerWidth || 800,
-    height: 400,
+    height: containerHeight,
     layout: {
       background: { color: '#0a0a0a' },
       textColor: '#9ca3af',
@@ -346,9 +815,19 @@ async function initChart() {
       borderColor: 'rgba(255, 255, 255, 0.1)',
       timeVisible: true,
       secondsVisible: false,
+      fixLeftEdge: true,
+      fixRightEdge: true,
+      lockVisibleTimeRangeOnResize: true,
     },
+    handleScroll: isFullscreen.value ? { vertTouchDrag: false } : false,
+    handleScale: isFullscreen.value ? { 
+      axisPressedMouseMove: { time: true, price: true },
+      mouseWheel: true,
+      pinch: true
+    } : false,
   })
 
+  // Initialize all series types (only one will be visible at a time)
   candlestickSeries = chart.addCandlestickSeries({
     upColor: '#10b981',
     downColor: '#ef4444',
@@ -356,9 +835,64 @@ async function initChart() {
     borderDownColor: '#ef4444',
     wickUpColor: '#10b981',
     wickDownColor: '#ef4444',
+    visible: chartType.value === 'candlestick'
   })
 
-  generateChartData()
+  lineSeries = chart.addLineSeries({
+    color: '#fbbf24',
+    lineWidth: 2,
+    visible: chartType.value === 'line'
+  })
+
+  areaSeries = chart.addAreaSeries({
+    topColor: 'rgba(251, 191, 36, 0.4)',
+    bottomColor: 'rgba(251, 191, 36, 0.0)',
+    lineColor: '#fbbf24',
+    lineWidth: 2,
+    visible: chartType.value === 'area'
+  })
+
+  baselineSeries = chart.addBaselineSeries({
+    topLineColor: '#10b981',
+    topFillColor1: 'rgba(16, 185, 129, 0.28)',
+    topFillColor2: 'rgba(16, 185, 129, 0.05)',
+    bottomLineColor: '#ef4444',
+    bottomFillColor1: 'rgba(239, 68, 68, 0.05)',
+    bottomFillColor2: 'rgba(239, 68, 68, 0.28)',
+    lineWidth: 2,
+    visible: chartType.value === 'baseline'
+  })
+
+  // Create indicator series (initially hidden)
+  ma20Series = chart.addLineSeries({
+    color: '#3b82f6',
+    lineWidth: 1.5,
+    visible: false,
+    priceLineVisible: false
+  })
+
+  ma50Series = chart.addLineSeries({
+    color: '#8b5cf6',
+    lineWidth: 1.5,
+    visible: false,
+    priceLineVisible: false
+  })
+
+  ema12Series = chart.addLineSeries({
+    color: '#06b6d4',
+    lineWidth: 1.5,
+    visible: false,
+    priceLineVisible: false
+  })
+
+  ema26Series = chart.addLineSeries({
+    color: '#ec4899',
+    lineWidth: 1.5,
+    visible: false,
+    priceLineVisible: false
+  })
+
+  await loadChartData()
   
   // Handle resize
   window.addEventListener('resize', handleResize)
@@ -369,120 +903,421 @@ async function initChart() {
   }, 100)
 }
 
+async function initRsiChart() {
+  const container = isFullscreen.value ? rsiChartContainerFullscreen.value : rsiChartContainer.value
+  if (!container) return
+  
+  await nextTick()
+  
+  const containerWidth = container.clientWidth
+  
+  rsiChart = createChart(container, {
+    width: containerWidth || 800,
+    height: 120,
+    layout: {
+      background: { color: '#0a0a0a' },
+      textColor: '#9ca3af',
+    },
+    grid: {
+      vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+      horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    timeScale: {
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      timeVisible: true,
+      secondsVisible: false,
+      fixLeftEdge: true,
+      fixRightEdge: true,
+      lockVisibleTimeRangeOnResize: true,
+      visible: false,
+    },
+    handleScroll: false,
+    handleScale: false,
+  })
+
+  rsiSeries = rsiChart.addLineSeries({
+    color: '#f59e0b',
+    lineWidth: 2,
+    priceLineVisible: false
+  })
+  
+  // Add reference lines at 30 and 70
+  rsiChart.addLineSeries({
+    color: 'rgba(239, 68, 68, 0.3)',
+    lineWidth: 1,
+    lineStyle: 2,
+    priceLineVisible: false
+  }).setData([{ time: 0, value: 70 }])
+  
+  rsiChart.addLineSeries({
+    color: 'rgba(16, 185, 129, 0.3)',
+    lineWidth: 1,
+    lineStyle: 2,
+    priceLineVisible: false
+  }).setData([{ time: 0, value: 30 }])
+}
+
 function handleResize() {
-  if (chart && chartContainer.value) {
-    const width = chartContainer.value.clientWidth
+  const container = isFullscreen.value ? chartContainerFullscreen.value : chartContainer.value
+  if (chart && container) {
+    const width = container.clientWidth
+    const height = container.clientHeight || (isFullscreen.value ? 600 : 400)
     if (width > 0) {
-      chart.applyOptions({ width })
+      chart.applyOptions({ width, height })
+    }
+  }
+  
+  const rsiContainer = isFullscreen.value ? rsiChartContainerFullscreen.value : rsiChartContainer.value
+  if (rsiChart && rsiContainer && activeIndicators.value.includes('rsi')) {
+    const width = rsiContainer.clientWidth
+    if (width > 0) {
+      rsiChart.applyOptions({ width })
     }
   }
 }
 
-function generateChartData() {
-  if (!candlestickSeries) return
+async function loadChartData(isInitialLoad = false) {
+  if (!chart) return
   
-  // Get base price for selected pair
-  const basePrices = {
-    'EUR/USD': 1.0876,
-    'GBP/USD': 1.2654,
-    'USD/JPY': 149.87,
-    'AUD/USD': 0.6523,
-    'USD/CAD': 1.3456,
-    'NZD/USD': 0.6123
+  // Only show loading state on initial load, not on refresh
+  if (isInitialLoad) {
+    chartLoading.value = true
   }
+  chartError.value = ''
   
-  const basePrice = basePrices[chartPair.value] || 1.0
-  const data = []
-  const now = Date.now() / 1000
-  const dayInSeconds = 86400
-  
-  // Generate 90 days of candlestick data
-  for (let i = 90; i >= 0; i--) {
-    const time = now - (i * dayInSeconds)
-    const open = basePrice + (Math.random() - 0.5) * 0.02
-    const close = open + (Math.random() - 0.5) * 0.015
-    const high = Math.max(open, close) + Math.random() * 0.01
-    const low = Math.min(open, close) - Math.random() * 0.01
+  try {
+    const parts = chartPair.value.split('/')
+    if (parts.length !== 2) {
+      chartError.value = 'Invalid pair.'
+      return
+    }
+    const [from, to] = parts
+    const result = await forexStore.fetchPairHistory(from, to, chartHistoryPeriod.value)
+    const candles = result.candles || []
+    if (candles.length === 0) {
+      if (isInitialLoad) {
+        chartError.value = 'No chart data for this pair.'
+        currentPrice.value = 0
+        priceChange.value = 0
+      }
+      return
+    }
     
-    data.push({
-      time: Math.floor(time),
-      open,
-      high,
-      low,
-      close
-    })
-  }
-  
-  candlestickSeries.setData(data)
-  
-  // Update current price and change
-  if (data.length > 0) {
-    const latestCandle = data[data.length - 1]
-    const previousCandle = data[data.length - 2]
-    currentPrice.value = latestCandle.close
-    priceChange.value = ((latestCandle.close - previousCandle.close) / previousCandle.close) * 100
+    // Update data for all series types
+    if (candlestickSeries) candlestickSeries.setData(candles)
+    
+    // For line/area/baseline, convert to line data
+    const lineData = candles.map((c) => ({ time: c.time, value: c.close }))
+    if (lineSeries) lineSeries.setData(lineData)
+    if (areaSeries) areaSeries.setData(lineData)
+    if (baselineSeries) {
+      const baseValue = candles[0]?.close || 0
+      baselineSeries.setData(lineData)
+      baselineSeries.applyOptions({ baseValue: { type: 'price', price: baseValue } })
+    }
+    
+    // Update technical indicators
+    updateIndicators(candles)
+    
+    // Fix the visible time range to match the data range exactly (disable zoom/scroll)
+    if (chart && candles.length > 0) {
+      const timeScale = chart.timeScale()
+      const from = candles[0].time
+      const to = candles[candles.length - 1].time
+      timeScale.setVisibleRange({ from, to })
+    }
+    
+    const latest = candles[candles.length - 1]
+    const prev = candles[candles.length - 2]
+    currentPrice.value = latest.close
+    priceChange.value =
+      prev && prev.close
+        ? ((latest.close - prev.close) / prev.close) * 100
+        : 0
+  } catch (e) {
+    if (isInitialLoad) {
+      chartError.value = e.response?.data?.detail || 'Could not load chart data.'
+      currentPrice.value = 0
+      priceChange.value = 0
+    }
+  } finally {
+    if (isInitialLoad) {
+      chartLoading.value = false
+    }
   }
 }
 
 function updateChartPair() {
-  generateChartData()
+  loadChartData(true) // Initial load when pair changes
 }
 
-// ── Related News ──────────────────────────────────────────────────────────
-const newsArticles = {
-  'EUR/USD': [
-    { id: 1, headline: 'ECB Signals Potential Rate Cuts as Eurozone Inflation Cools', source: 'Reuters', time: '2 hours ago' },
-    { id: 2, headline: 'EUR/USD Technical Analysis: Support at 1.0850 Holds Strong', source: 'FX Street', time: '4 hours ago' },
-    { id: 3, headline: 'Dollar Weakens Against Euro on Fed Rate Cut Speculation', source: 'Bloomberg', time: '6 hours ago' },
-    { id: 4, headline: 'European Economic Data Beats Expectations, Euro Rallies', source: 'MarketWatch', time: '8 hours ago' },
-    { id: 5, headline: 'EUR/USD Reaches Monthly High Amid Strong German PMI', source: 'Forex Factory', time: '1 day ago' },
-    { id: 6, headline: 'Analysts Predict EUR/USD Could Test 1.1000 This Quarter', source: 'DailyFX', time: '1 day ago' }
-  ],
-  'GBP/USD': [
-    { id: 1, headline: 'Bank of England Maintains Rates, Pound Strengthens', source: 'Financial Times', time: '3 hours ago' },
-    { id: 2, headline: 'UK Inflation Data Surprises: GBP/USD Surges to 1.2700', source: 'Reuters', time: '5 hours ago' },
-    { id: 3, headline: 'Cable Holds Above Key Support as BOE Turns Hawkish', source: 'FX Street', time: '7 hours ago' },
-    { id: 4, headline: 'British Pound Benefits from Positive Employment Numbers', source: 'Bloomberg', time: '10 hours ago' },
-    { id: 5, headline: 'GBP/USD Technical Outlook: Bulls Target 1.2800', source: 'DailyFX', time: '1 day ago' },
-    { id: 6, headline: 'Sterling Gains on Strong UK Retail Sales Report', source: 'MarketWatch', time: '1 day ago' }
-  ],
-  'USD/JPY': [
-    { id: 1, headline: 'Bank of Japan Maintains Ultra-Loose Policy, Yen Weakens', source: 'Nikkei Asia', time: '1 hour ago' },
-    { id: 2, headline: 'USD/JPY Climbs to 150.00 as BOJ Keeps Rates Unchanged', source: 'Reuters', time: '4 hours ago' },
-    { id: 3, headline: 'Japanese Yen Under Pressure Amid Yield Differential', source: 'Bloomberg', time: '6 hours ago' },
-    { id: 4, headline: 'USD/JPY Technical Analysis: Resistance at 150.50', source: 'FX Street', time: '9 hours ago' },
-    { id: 5, headline: 'Japan\'s Core CPI Rises, But BOJ Stays Dovish', source: 'Financial Times', time: '12 hours ago' },
-    { id: 6, headline: 'Yen Intervention Rumors as USD/JPY Tests Multi-Year Highs', source: 'Forex Factory', time: '1 day ago' }
-  ],
-  'AUD/USD': [
-    { id: 1, headline: 'Australian Dollar Rallies on Strong Employment Data', source: 'Reuters', time: '2 hours ago' },
-    { id: 2, headline: 'RBA Minutes Show Hawkish Stance, AUD/USD Gains', source: 'Bloomberg', time: '5 hours ago' },
-    { id: 3, headline: 'Aussie Benefits from Rising Commodity Prices', source: 'MarketWatch', time: '7 hours ago' },
-    { id: 4, headline: 'AUD/USD Technical: Bulls Eye 0.6600 Resistance', source: 'DailyFX', time: '10 hours ago' },
-    { id: 5, headline: 'China\'s Economic Recovery Boosts Australian Dollar', source: 'Financial Times', time: '14 hours ago' },
-    { id: 6, headline: 'AUD Strengthens as Iron Ore Prices Surge', source: 'FX Street', time: '1 day ago' }
-  ],
-  'USD/CAD': [
-    { id: 1, headline: 'Canadian Dollar Strengthens as Oil Prices Rally', source: 'Reuters', time: '3 hours ago' },
-    { id: 2, headline: 'USD/CAD Falls Below 1.3400 on Crude Surge', source: 'Bloomberg', time: '5 hours ago' },
-    { id: 3, headline: 'Bank of Canada Holds Rates, CAD Remains Steady', source: 'Financial Times', time: '8 hours ago' },
-    { id: 4, headline: 'Loonie Benefits from Strong Canadian GDP Growth', source: 'MarketWatch', time: '11 hours ago' },
-    { id: 5, headline: 'USD/CAD Technical: Support at 1.3350 Holds', source: 'FX Street', time: '15 hours ago' },
-    { id: 6, headline: 'WTI Crude Tops $80, Canadian Dollar Gains', source: 'Forex Factory', time: '1 day ago' }
-  ],
-  'NZD/USD': [
-    { id: 1, headline: 'New Zealand Dollar Surges on RBNZ Hawkish Comments', source: 'Reuters', time: '2 hours ago' },
-    { id: 2, headline: 'Kiwi Reaches 6-Month High Against US Dollar', source: 'Bloomberg', time: '6 hours ago' },
-    { id: 3, headline: 'NZD/USD Technical Analysis: Bulls Target 0.6200', source: 'DailyFX', time: '9 hours ago' },
-    { id: 4, headline: 'New Zealand Employment Data Beats Forecasts', source: 'Financial Times', time: '12 hours ago' },
-    { id: 5, headline: 'RBNZ Signals No Rate Cuts in Near Term', source: 'MarketWatch', time: '1 day ago' },
-    { id: 6, headline: 'NZD Benefits from Risk-On Market Sentiment', source: 'FX Street', time: '1 day ago' }
-  ]
+function selectChartType(type) {
+  chartType.value = type
+  
+  // Toggle visibility of all series
+  if (candlestickSeries) candlestickSeries.applyOptions({ visible: type === 'candlestick' })
+  if (lineSeries) lineSeries.applyOptions({ visible: type === 'line' })
+  if (areaSeries) areaSeries.applyOptions({ visible: type === 'area' })
+  if (baselineSeries) baselineSeries.applyOptions({ visible: type === 'baseline' })
 }
 
-const relatedNews = computed(() => {
-  return newsArticles[chartPair.value] || newsArticles['EUR/USD']
-})
+function selectPeriod(period) {
+  chartHistoryPeriod.value = period
+  loadChartData(true) // Reload with new period
+}
+
+function getPeriodDateLabel(period) {
+  const now = new Date()
+  let targetDate = new Date()
+  
+  switch(period) {
+    case '1d':
+      return 'Today'
+    case '1wk':
+      targetDate.setDate(now.getDate() - 7)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case '1mo':
+      targetDate.setMonth(now.getMonth() - 1)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case '3mo':
+      targetDate.setMonth(now.getMonth() - 3)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case '6mo':
+      targetDate.setMonth(now.getMonth() - 6)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case 'ytd':
+      return 'Jan 1, ' + now.getFullYear()
+    case '1y':
+      targetDate.setFullYear(now.getFullYear() - 1)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    case '3y':
+      targetDate.setFullYear(now.getFullYear() - 3)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    case '5y':
+      targetDate.setFullYear(now.getFullYear() - 5)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    default:
+      return ''
+  }
+}
+
+// Calculate Simple Moving Average
+function calculateSMA(data, period) {
+  const result = []
+  for (let i = period - 1; i < data.length; i++) {
+    const slice = data.slice(i - period + 1, i + 1)
+    const avg = slice.reduce((sum, candle) => sum + candle.close, 0) / period
+    result.push({ time: data[i].time, value: avg })
+  }
+  return result
+}
+
+// Calculate Exponential Moving Average
+function calculateEMA(data, period) {
+  if (data.length === 0) return []
+  const result = []
+  const multiplier = 2 / (period + 1)
+  
+  // Start with SMA for first value
+  let ema = data.slice(0, period).reduce((sum, c) => sum + c.close, 0) / period
+  result.push({ time: data[period - 1].time, value: ema })
+  
+  // Calculate EMA for remaining values
+  for (let i = period; i < data.length; i++) {
+    ema = (data[i].close - ema) * multiplier + ema
+    result.push({ time: data[i].time, value: ema })
+  }
+  return result
+}
+
+// Calculate RSI (Relative Strength Index)
+function calculateRSI(data, period = 14) {
+  if (data.length < period + 1) return []
+  
+  const changes = []
+  for (let i = 1; i < data.length; i++) {
+    changes.push(data[i].close - data[i - 1].close)
+  }
+  
+  const result = []
+  let avgGain = 0
+  let avgLoss = 0
+  
+  // Calculate initial average gain/loss
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) {
+      avgGain += changes[i]
+    } else {
+      avgLoss += Math.abs(changes[i])
+    }
+  }
+  avgGain /= period
+  avgLoss /= period
+  
+  // Calculate RSI for each point
+  for (let i = period; i < changes.length; i++) {
+    const change = changes[i]
+    const gain = change > 0 ? change : 0
+    const loss = change < 0 ? Math.abs(change) : 0
+    
+    avgGain = (avgGain * (period - 1) + gain) / period
+    avgLoss = (avgLoss * (period - 1) + loss) / period
+    
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss
+    const rsi = 100 - (100 / (1 + rs))
+    
+    // Scale RSI (0-100) to overlay on price chart by mapping to price range
+    // Or store raw RSI value - for now we'll store raw for proper indicator display
+    result.push({ time: data[i + 1].time, value: rsi })
+  }
+  
+  return result
+}
+
+function updateIndicators(candles) {
+  if (!chart) return
+  
+  // Calculate and update each active indicator on main chart
+  if (activeIndicators.value.includes('ma20')) {
+    const ma20Data = calculateSMA(candles, 20)
+    if (ma20Series) ma20Series.setData(ma20Data)
+  }
+  
+  if (activeIndicators.value.includes('ma50')) {
+    const ma50Data = calculateSMA(candles, 50)
+    if (ma50Series) ma50Series.setData(ma50Data)
+  }
+  
+  if (activeIndicators.value.includes('ema12')) {
+    const ema12Data = calculateEMA(candles, 12)
+    if (ema12Series) ema12Series.setData(ema12Data)
+  }
+  
+  if (activeIndicators.value.includes('ema26')) {
+    const ema26Data = calculateEMA(candles, 26)
+    if (ema26Series) ema26Series.setData(ema26Data)
+  }
+  
+  // RSI is in separate chart
+  if (activeIndicators.value.includes('rsi')) {
+    const rsiData = calculateRSI(candles, 14)
+    if (rsiChart && rsiSeries) {
+      rsiSeries.setData(rsiData)
+      // Sync time range with main chart
+      if (candles.length > 0) {
+        const timeScale = rsiChart.timeScale()
+        const from = candles[0].time
+        const to = candles[candles.length - 1].time
+        timeScale.setVisibleRange({ from, to })
+      }
+    }
+  }
+}
+
+async function toggleIndicator(indicatorId) {
+  const index = activeIndicators.value.indexOf(indicatorId)
+  if (index === -1) {
+    // Add indicator
+    activeIndicators.value.push(indicatorId)
+    // Initialize RSI chart if needed
+    if (indicatorId === 'rsi' && !rsiChart) {
+      await nextTick()
+      await initRsiChart()
+      // Load current data into RSI chart
+      const parts = chartPair.value.split('/')
+      if (parts.length === 2) {
+        const [from, to] = parts
+        const result = await forexStore.fetchPairHistory(from, to, chartHistoryPeriod.value)
+        const candles = result.candles || []
+        if (candles.length > 0) {
+          const rsiData = calculateRSI(candles, 14)
+          if (rsiSeries) rsiSeries.setData(rsiData)
+          if (rsiChart && candles.length > 0) {
+            const timeScale = rsiChart.timeScale()
+            timeScale.setVisibleRange({ from: candles[0].time, to: candles[candles.length - 1].time })
+          }
+        }
+      }
+    }
+  } else {
+    // Remove indicator
+    activeIndicators.value.splice(index, 1)
+  }
+  
+  // Update visibility for non-RSI indicators
+  const seriesMap = {
+    'ma20': ma20Series,
+    'ma50': ma50Series,
+    'ema12': ema12Series,
+    'ema26': ema26Series
+  }
+  
+  const series = seriesMap[indicatorId]
+  if (series) {
+    series.applyOptions({ visible: activeIndicators.value.includes(indicatorId) })
+  }
+}
+
+async function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+  if (isFullscreen.value) {
+    document.body.style.overflow = 'hidden'
+  } else {
+    document.body.style.overflow = ''
+  }
+  
+  // Destroy existing charts
+  if (chart) {
+    chart.remove()
+    chart = null
+  }
+  if (rsiChart) {
+    rsiChart.remove()
+    rsiChart = null
+  }
+  
+  // Wait for DOM update
+  await nextTick()
+  
+  // Reinitialize charts in new containers
+  await initChart()
+  
+  // Reinitialize RSI chart if active
+  if (activeIndicators.value.includes('rsi')) {
+    await initRsiChart()
+  }
+  
+  // Reload data into charts
+  await loadChartData(false)
+}
+
+// ── Related News (fetch from API based on chart pair) ───────────────────
+const relatedNews = ref([])
+
+async function loadRelatedNews() {
+  try {
+    const [from, to] = chartPair.value.split('/')
+    // More specific query focusing on the pair
+    const query = `${from}/${to} OR (${from} AND ${to} forex)`
+    
+    // Use cached news store
+    const articles = await newsStore.fetchNews(query, 3)
+    
+    relatedNews.value = articles.slice(0, 3).map(article => ({
+      id: article.id,
+      headline: article.headline,
+      source: article.source,
+      time: article.date,
+      url: article.url
+    }))
+  } catch (err) {
+    console.error('Failed to load related news:', err)
+    relatedNews.value = []
+  }
+}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 const activeTab = ref('exchange')
@@ -538,8 +1373,8 @@ async function fetchRate() {
     currentRate.value = data.rate
     computeReceive()
   } catch {
-    rateError.value   = 'Could not fetch rate.'
-    currentRate.value = null
+    // Keep previous rate on error (don't set to null)
+    rateError.value = 'Could not fetch rate.'
   } finally {
     rateLoading.value = false
   }
@@ -553,13 +1388,28 @@ function syncCurrenciesFromChart() {
   fetchRate()
 }
 
+const CHART_REFRESH_INTERVAL_MS = 5_000  // Reload chart OHLC every 5s (configurable)
+const RATE_REFRESH_INTERVAL_MS = 5_000   // Re-fetch exchange rate every 5s (configurable)
+
+let chartRefreshTimer = null
+let rateRefreshTimer = null
+
 // Initialize chart and watches on mount
 onMounted(async () => {
   await fetchCurrencies()
+  if (tradingPairs.value.length > 0 && !tradingPairs.value.includes(chartPair.value)) {
+    chartPair.value = tradingPairs.value[0]
+  }
   await initChart()
   await portfolioStore.fetchHoldings()
   loadHistory()
   fetchRate()
+
+  // Initial chart data load
+  await loadChartData(true)
+
+  chartRefreshTimer = setInterval(() => loadChartData(false), CHART_REFRESH_INTERVAL_MS)
+  rateRefreshTimer = setInterval(() => fetchRate(), RATE_REFRESH_INTERVAL_MS)
   
   // Watch for query parameter changes from wishlist navigation
   watch(() => route.query.pair, (newPair) => {
@@ -570,33 +1420,21 @@ onMounted(async () => {
     }
   }, { immediate: true })
   
-  // Watch for chart pair changes and sync currencies
+  // Watch for chart pair changes — sync form + reload OHLC from API
   watch(chartPair, () => {
     syncCurrenciesFromChart()
+    loadChartData(true) // Show loading when user changes pair
+    loadRelatedNews()    // Reload news for new pair
   })
-})
-
-onUnmounted(() => {
-  if (chart) {
-    window.removeEventListener('resize', handleResize)
-  }
+  
+  // Load initial news on mount
+  loadRelatedNews()
 })
 
 function computeReceive() {
   receiveAmount.value = (currentRate.value && exchangeAmount.value > 0)
     ? exchangeAmount.value * currentRate.value
     : null
-}
-
-function swapCurrencies() {
-  // Swap the currencies
-  ;[fromCurrency.value, toCurrency.value] = [toCurrency.value, fromCurrency.value]
-  
-  // Update chart pair to match
-  chartPair.value = `${fromCurrency.value}/${toCurrency.value}`
-  updateChartPair()
-  
-  fetchRate()
 }
 
 async function executeTrade() {
@@ -678,9 +1516,27 @@ function formatDate(ts) {
 }
 
 onUnmounted(() => {
+  if (chartRefreshTimer) clearInterval(chartRefreshTimer)
+  if (rateRefreshTimer) clearInterval(rateRefreshTimer)
+  window.removeEventListener('resize', handleResize)
+  document.body.style.overflow = ''
+  
   if (chart) {
-    window.removeEventListener('resize', handleResize)
     chart.remove()
+    chart = null
+    candlestickSeries = null
+    lineSeries = null
+    areaSeries = null
+    baselineSeries = null
+    ma20Series = null
+    ma50Series = null
+    ema12Series = null
+    ema26Series = null
+  }
+  if (rsiChart) {
+    rsiChart.remove()
+    rsiChart = null
+    rsiSeries = null
   }
 })
 </script>
@@ -716,11 +1572,26 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  height: 100%;
+}
+
+.widgets-sidebar > .glass {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .chart-container {
   width: 100%;
   height: 400px;
+  position: relative;
+  overflow: hidden;
+}
+
+.rsi-chart-container {
+  width: 100%;
+  height: 120px;
   position: relative;
   overflow: hidden;
 }

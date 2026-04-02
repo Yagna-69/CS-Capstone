@@ -63,14 +63,7 @@ const changeClass = computed(() => {
 
 const sparklinePoints = computed(() => {
   if (props.sparklineData.length === 0) {
-    // Generate mock sparkline
-    const points = []
-    for (let i = 0; i < 20; i++) {
-      const x = (i / 19) * 100
-      const y = 15 + Math.sin(i * 0.5) * 10 + (Math.random() - 0.5) * 5
-      points.push(`${x},${y}`)
-    }
-    return points.join(' ')
+    return '0,15 100,15'
   }
   
   const max = Math.max(...props.sparklineData)

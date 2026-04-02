@@ -23,6 +23,7 @@ backend/venv/
 backend/env/
 backend/ENV/
 backend/.venv
+backend/.cache/
 
 # Node
 frontend/node_modules/
