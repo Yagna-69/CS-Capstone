@@ -75,6 +75,8 @@ class HistoricalPortfolioResponse(BaseModel):
     interval: str
     data_points: list[HistoricalDataPoint]
     currency: str  # always "USD"
+    total_deposited: Optional[float] = None  # Total deposits in USD
+    net_gain_loss: Optional[float] = None  # Current value - total deposited
 
 
 # --- Forex ---

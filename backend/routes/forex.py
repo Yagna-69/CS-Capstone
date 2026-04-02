@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from models import RateResponse
-from forex_service import get_rate, get_rates, SUPPORTED_CURRENCIES
+from forex_service import (
+    get_rate,
+    get_rates,
+    get_historical_ohlc,
+    PERIOD_MAP,
+    SUPPORTED_CURRENCIES,
+)
 
 router = APIRouter()
 
@@ -78,6 +84,40 @@ async def live_rates(pairs: str = None):
 
     return {
         "rates": rates,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/history/{from_currency}/{to_currency}")
+async def pair_ohlc_history(
+    from_currency: str,
+    to_currency: str,
+    period: str = Query(
+        "3mo",
+        description="One of: " + ", ".join(sorted(PERIOD_MAP.keys())),
+    ),
+):
+    """OHLC time series for a pair (yfinance), for TradingView-style charts."""
+    if period not in PERIOD_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid period. Use one of: {list(PERIOD_MAP)}",
+        )
+    try:
+        candles = get_historical_ohlc(
+            from_currency.upper(),
+            to_currency.upper(),
+            period,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {
+        "from_currency": from_currency.upper(),
+        "to_currency": to_currency.upper(),
+        "period": period,
+        "interval": PERIOD_MAP[period][1],
+        "candles": candles,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

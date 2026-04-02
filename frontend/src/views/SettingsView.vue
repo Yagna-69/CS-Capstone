@@ -250,12 +250,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { preferencesApi, forexApi } from '@/services/api'
+import { ref, onMounted, computed } from 'vue'
+import { preferencesApi } from '@/services/api'
+import { useForexStore } from '@/stores/forex'
 
 const activeTab = ref('profile')
 const isAdmin = ref(false)
-const currencies = ref([])
+const forexStore = useForexStore()
+const currencies = computed(() => forexStore.currencies)
 
 onMounted(async () => {
   try {
@@ -264,17 +266,7 @@ onMounted(async () => {
   } catch {
     // preferences may not have is_admin yet
   }
-  try {
-    const { data } = await forexApi.getCurrencies()
-    currencies.value = data.currencies
-  } catch {
-    currencies.value = [
-      { code: 'USD', name: 'US Dollar' },
-      { code: 'EUR', name: 'Euro' },
-      { code: 'GBP', name: 'British Pound' },
-      { code: 'JPY', name: 'Japanese Yen' },
-    ]
-  }
+  // Currencies are auto-loaded by forex store pipeline
 })
 
 async function toggleAdmin() {

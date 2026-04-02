@@ -39,6 +39,7 @@ export const portfolioApi = {
   getHistory:  (period = '1mo')         => apiClient.get('/portfolio/history', { params: { period } }),
   deposit:     (currency, amount)       => apiClient.post('/portfolio/deposit',  { currency, amount }),
   withdraw:    (currency, amount)       => apiClient.post('/portfolio/withdraw', { currency, amount }),
+  getFirstTransaction: ()               => apiClient.get('/portfolio/first-transaction'),
 }
 
 export const tradeApi = {
@@ -55,6 +56,8 @@ export const forexApi = {
   getRate:       (from, to) => apiClient.get(`/forex/rate/${from}/${to}`),
   getRates:      (pairs)    => apiClient.get('/forex/rates', pairs ? { params: { pairs } } : {}),
   getCurrencies: ()         => apiClient.get('/forex/currencies'),
+  getPairHistory: (from, to, period = '3mo') =>
+    apiClient.get(`/forex/history/${from}/${to}`, { params: { period } }),
 }
 
 export const preferencesApi = {
@@ -73,6 +76,7 @@ export const llmApi = {
 
 export const newsApi = {
   getNews: (currency, limit, q) => apiClient.get('/news', { params: { currency, limit, q } }),
+  getWsbPosts: (limit) => apiClient.get('/news/reddit/wsb', { params: { limit } }),
 }
 
 export default apiClient

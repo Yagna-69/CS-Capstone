@@ -38,6 +38,31 @@ async def get_portfolio(current=Depends(get_current_user)):
     return holdings
 
 
+@router.get("/first-transaction")
+async def get_first_transaction(current=Depends(get_current_user)):
+    """Return the date of the user's first transaction (deposit/withdraw/exchange)."""
+    user_id = current["user"].id
+    admin = get_supabase_admin()
+
+    try:
+        # Get earliest transaction where user was sender or receiver
+        response = (
+            admin.table("transaction-log")
+            .select("timestamp")
+            .or_(f"sender_id.eq.{user_id},receiver_id.eq.{user_id}")
+            .order("timestamp", desc=False)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if not response.data:
+        return {"first_transaction_date": None}
+
+    return {"first_transaction_date": response.data[0]["timestamp"]}
+
+
 @router.get("/history", response_model=HistoricalPortfolioResponse)
 async def get_portfolio_history(
     period: str = Query("1mo", description="Time period: 1d, 1wk, 1mo, 3mo, 6mo, 1y, 3y, 5y"),
@@ -138,11 +163,51 @@ async def get_portfolio_history(
 
         data_points.append(HistoricalDataPoint(date=date_str, value=round(total, 2)))
 
+    # Calculate total deposits in USD
+    try:
+        # Fetch all deposit transactions
+        deposits_resp = (
+            admin.table("transaction-log")
+            .select("*")
+            .eq("sender_id", user_id)
+            .eq("receiver_id", user_id)
+            .eq("type", "DEPOSIT")
+            .execute()
+        )
+        
+        # Calculate total deposits converted to USD at the time of deposit
+        total_deposited_usd = 0.0
+        for tx in deposits_resp.data:
+            deposit_currency = tx.get("sender_currency_ticker_symbol", "USD")
+            deposit_amount = abs(float(tx.get("sender-amount", 0)))
+            
+            if deposit_currency == "USD":
+                total_deposited_usd += deposit_amount
+            else:
+                # Convert deposit amount to USD using rate at time of deposit
+                # For simplicity, use current rate (ideally would use historical rate)
+                try:
+                    from forex_service import get_rate
+                    rate_to_usd = get_rate(deposit_currency, "USD")
+                    total_deposited_usd += deposit_amount * rate_to_usd
+                except:
+                    pass
+        
+        # Calculate current portfolio value (last data point)
+        current_value = data_points[-1].value if data_points else 0
+        net_gain_loss = current_value - total_deposited_usd
+        
+    except Exception:
+        total_deposited_usd = None
+        net_gain_loss = None
+
     return HistoricalPortfolioResponse(
         period=period,
         interval=yf_interval,
         data_points=data_points,
         currency="USD",
+        total_deposited=round(total_deposited_usd, 2) if total_deposited_usd is not None else None,
+        net_gain_loss=round(net_gain_loss, 2) if net_gain_loss is not None else None,
     )
 
 

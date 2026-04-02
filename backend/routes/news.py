@@ -1,8 +1,5 @@
 """
-News routes — SKELETON.
-
-TODO: Integrate a forex news API (e.g. NewsAPI, Alpha Vantage News, Benzinga).
-      Add NEWSAPI_KEY (or equivalent) to config.py and .env when ready.
+News routes — integrates NewsAPI for forex news and Reddit for WSB posts.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +8,85 @@ import httpx
 from datetime import datetime, timedelta
 
 router = APIRouter()
+
+
+@router.get("/reddit/wsb")
+async def get_wsb_posts(limit: int = 10):
+    """
+    Return hot posts from r/wallstreetbets.
+    Query params:
+      - limit: max number of posts (default 10, max 25)
+    """
+    limit = max(1, min(limit, 25))  # Reddit allows up to 100, but we'll cap at 25
+    
+    # Fetch more to account for filtered stickied posts
+    fetch_limit = limit + 5
+    
+    # Reddit public JSON API - no auth required for read-only access
+    url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; FXTrade/1.0; +http://fxtrade.app)"
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            payload = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to fetch Reddit posts: {str(exc)}")
+    
+    posts = []
+    for post_data in payload.get("data", {}).get("children", []):
+        post = post_data.get("data", {})
+        
+        # Skip stickied/pinned posts
+        if post.get("stickied"):
+            continue
+        
+        # Try to get high-quality preview image
+        thumbnail = None
+        preview_images = post.get("preview", {}).get("images", [])
+        if preview_images:
+            # Get the source image URL (highest quality)
+            source = preview_images[0].get("source", {})
+            thumbnail = source.get("url", "")
+            # Decode HTML entities in URL
+            if thumbnail:
+                thumbnail = thumbnail.replace("&amp;", "&")
+        
+        # Fallback to thumbnail if no preview
+        if not thumbnail:
+            thumbnail = post.get("thumbnail", "")
+            if thumbnail in ["self", "default", "nsfw", "spoiler", ""]:
+                thumbnail = None
+        
+        # Format timestamp as relative time
+        created = post.get("created_utc", 0)
+        now = datetime.utcnow().timestamp()
+        hours_ago = int((now - created) / 3600)
+        time_str = f"{hours_ago}h ago" if hours_ago < 24 else f"{int(hours_ago / 24)}d ago"
+        
+        posts.append({
+            "id": post.get("id"),
+            "title": post.get("title", "Untitled"),
+            "author": post.get("author", "Unknown"),
+            "score": post.get("score", 0),
+            "num_comments": post.get("num_comments", 0),
+            "time": time_str,
+            "url": f"https://www.reddit.com{post.get('permalink', '')}",
+            "thumbnail": thumbnail,
+            "flair": post.get("link_flair_text", ""),
+            "selftext": post.get("selftext", "")[:200] + "..." if post.get("selftext") else ""
+        })
+        
+        if len(posts) >= limit:
+            break
+    
+    return {"status": "ok", "posts": posts}
 
 
 @router.get("/")
@@ -27,14 +103,20 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
 
     limit = max(1, min(limit, 100))  # Allow up to 100 articles per request
 
-    # For NewsAPI, use search for user queries, default gets forex news
+    # Build more specific query strings for better relevance
+    # Use AND operators to ensure all results are forex-related
     if q:
-        query = q
+        # User search - add forex context to improve relevance
+        query = f'({q}) AND (forex OR "foreign exchange" OR "currency market" OR FX OR "exchange rate")'
+    elif currency:
+        # Currency-specific - focus on that currency in forex context
+        query = f'({currency}) AND (forex OR "foreign exchange" OR "currency market" OR "exchange rate" OR "central bank")'
     else:
-        query = "forex"  # Default to forex news
+        # Default forex news with quality sources
+        query = '(forex OR "foreign exchange" OR "currency trading" OR FX) AND ("exchange rate" OR market OR trader OR "central bank")'
 
-    # Fetch more articles - NewsAPI will return available results
-    fetch_limit = min(limit * 2, 100)
+    # Only fetch what we need - add small buffer for potential bad articles
+    fetch_limit = min(limit + 5, 100)
 
     params = {
         "apiKey": settings.newsapi_key,
@@ -43,7 +125,7 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
         "q": query,
         "sortBy": "publishedAt",
         "page": 1,
-        "from": (datetime.utcnow() - timedelta(days=30)).isoformat() + 'Z',
+        "from": (datetime.utcnow() - timedelta(days=14)).isoformat() + 'Z',  # Last 14 days for more relevant news
     }
 
     url = "https://newsapi.org/v2/everything"
@@ -61,36 +143,44 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
     if payload.get("status") != "ok":
         raise HTTPException(502, f"NewsAPI bad status: {payload.get('message', 'unknown')}")
 
+    # Light filtering - only exclude obvious spam
     articles = []
+    spam_keywords = ['recipe', 'fashion show', 'celebrity gossip', 'entertainment awards', 'sports score', 'weather forecast', 'horoscope']
+    
     for idx, a in enumerate(payload.get("articles", [])):
-        image_url = a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image"
-        published_at = a.get("publishedAt") or ""
-        articles.append({
-            "id": a.get("url") or str(idx),
-            "headline": a.get("title") or "Untitled",
-            "date": (published_at[:10] if published_at else ""),
-            "image": image_url,
-            "source": a.get("source", {}).get("name", "Unknown"),
-            "url": a.get("url"),
-            "description": a.get("description", ""),
-        })
+        title = (a.get("title") or "").lower()
+        
+        # Skip obvious spam
+        is_spam = any(spam in title for spam in spam_keywords)
+        
+        if not is_spam:
+            image_url = a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image"
+            published_at = a.get("publishedAt") or ""
+            articles.append({
+                "id": a.get("url") or str(idx),
+                "headline": a.get("title") or "Untitled",
+                "date": (published_at[:10] if published_at else ""),
+                "image": image_url,
+                "source": a.get("source", {}).get("name", "Unknown"),
+                "url": a.get("url"),
+                "description": a.get("description", ""),
+            })
+            
+            if len(articles) >= limit:
+                break
 
-    # No additional filtering - rely on NewsAPI's relevance
-    articles = articles[:limit]
-
-    # If no results, fallback to broader search
+    # If no results after filtering, try simpler fallback (only for custom queries)
     if not articles and q:
         fallback_params = params.copy()
-        fallback_params["q"] = "forex"  # Remove search to get general forex news
+        fallback_params["q"] = "forex market"
+        fallback_params["pageSize"] = limit
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, params=fallback_params)
                 resp.raise_for_status()
                 fallback_payload = resp.json()
                 if fallback_payload.get("status") == "ok":
-                    for idx, a in enumerate(fallback_payload.get("articles", [])):
-                        if len(articles) >= limit:
-                            break
+                    for idx, a in enumerate(fallback_payload.get("articles", [])[:limit]):
                         image_url = a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image"
                         published_at = a.get("publishedAt") or ""
                         articles.append({
@@ -110,7 +200,7 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
         articles = [
             {
                 "id": "fx-fallback-1",
-                "headline": "Forex update: No recent economic headlines, please try again in a few minutes.",
+                "headline": "Forex market update: No recent headlines available. Please check back soon.",
                 "date": datetime.utcnow().date().isoformat(),
                 "image": "https://placehold.co/400x300/1a1a1a/FFD700?text=FX",
                 "source": "FXTrade", 

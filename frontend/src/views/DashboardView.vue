@@ -31,31 +31,41 @@
                 <h2 class="text-xl font-bold text-white">Holdings</h2>
               </div>
             </div>
-            <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1 overflow-auto">
-              <div v-if="portfolioStore.loading" class="space-y-1.5">
-                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
-                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
-                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+            <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1 flex gap-0 overflow-hidden">
+              <!-- Left: Donut Chart (30%) -->
+              <div v-if="holdingsDonutData && portfolioStore.holdings.length > 0" class="flex-shrink-0 flex items-center justify-start pl-1 pr-2 border-r border-gray-700" style="width: 30%; min-width: 110px;">
+                <div style="width: 100%; height: 140px;">
+                  <Doughnut :data="holdingsDonutData" :options="holdingsDonutOptions" />
+                </div>
               </div>
-              <div v-else-if="portfolioStore.error" class="flex items-center justify-center h-full text-red-400 text-sm">
-                {{ portfolioStore.error }}
-              </div>
-              <div v-else-if="portfolioStore.holdings.length === 0" class="flex items-center justify-center h-full text-gray-500 text-sm">
-                No holdings yet
-              </div>
-              <div v-else class="space-y-1.5">
-                <div
-                  v-for="holding in portfolioStore.holdings"
-                  :key="holding['currency-ticker-symbol'] || holding.currency"
-                  class="flex justify-between items-center px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
-                >
-                  <div>
-                    <p class="font-bold text-white text-sm group-hover:text-primary transition">{{ holding['currency-ticker-symbol'] || holding.currency }}</p>
-                    <p class="text-xs text-gray-500 mt-0.5">{{ holding.currency || 'Currency' }}</p>
-                  </div>
-                  <div class="text-right">
-                    <p class="font-mono text-white text-sm">{{ Number(holding.amount).toFixed(2) }}</p>
-                    <p class="text-xs text-gray-500 mt-0.5">${{ (Number(holding.amount) * 1.2).toFixed(2) }}</p>
+              
+              <!-- Right: Holdings List (70%) - scrollable after 3 items -->
+              <div class="flex-1 overflow-auto holdings-list-scroll pl-3">
+                <div v-if="portfolioStore.loading && portfolioStore.holdings.length === 0" class="space-y-1.5">
+                  <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+                  <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+                  <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+                </div>
+                <div v-else-if="portfolioStore.error" class="flex items-center justify-center h-full text-red-400 text-sm">
+                  {{ portfolioStore.error }}
+                </div>
+                <div v-else-if="portfolioStore.holdings.length === 0" class="flex items-center justify-center h-full text-gray-500 text-sm">
+                  No holdings yet
+                </div>
+                <div v-else class="space-y-1.5">
+                  <div
+                    v-for="holding in portfolioStore.holdings"
+                    :key="holding['currency-ticker-symbol'] || holding.currency"
+                    class="flex justify-between items-center px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
+                  >
+                    <div>
+                      <p class="font-bold text-white text-sm group-hover:text-primary transition">{{ holding['currency-ticker-symbol'] || holding.currency }}</p>
+                      <p class="text-xs text-gray-500 mt-0.5">{{ holding.currency || 'Currency' }}</p>
+                    </div>
+                    <div class="text-right">
+                      <p class="font-mono text-white text-sm">{{ Number(holding.amount).toFixed(2) }}</p>
+                      <p class="text-xs text-gray-500 mt-0.5">units</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -63,12 +73,7 @@
             
             <!-- Holdings Footer -->
             <div class="widget-footer">
-              <div class="flex justify-between items-center">
-                <p class="text-xs text-gray-400">{{ portfolioStore.holdings?.length || 0 }} currencies held</p>
-                <button class="text-xs text-primary hover:text-primary/80 font-bold transition">
-                  Manage →
-                </button>
-              </div>
+              <p class="text-xs text-gray-400">{{ portfolioStore.holdings?.length || 0 }} currencies held</p>
             </div>
           </div>
 
@@ -96,22 +101,45 @@
                 <h2 class="text-xl font-bold text-white">Wishlist</h2>
               </div>
             </div>
-            <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1">
-              <div class="space-y-1.5">
+            <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1 overflow-auto wishlist-scroll">
+              <div v-if="portfolioStore.wishlist.length === 0" class="flex items-center justify-center py-8 text-gray-500 text-sm text-center px-2">
+                No watchlist items yet. Add pairs from trading to track them here.
+              </div>
+              <div v-else class="space-y-1.5">
                 <div
-                  v-for="item in wishlistItems"
-                  :key="item.symbol"
-                  @click="goToTrading(item.symbol)"
-                  class="flex justify-between items-center px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
+                  v-for="item in portfolioStore.wishlist"
+                  :key="item.pair"
+                  @click="goToTrading(item.pair)"
+                  class="flex items-center justify-between px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
                 >
-                  <div>
-                    <p class="font-bold text-white text-sm group-hover:text-primary transition">{{ item.symbol }}</p>
-                    <p class="text-xs text-gray-500 mt-0.5">{{ item.name }}</p>
+                  <div class="flex-1">
+                    <p 
+                      class="font-bold text-sm transition group-hover:text-primary"
+                      :class="getWishlistChange(item.pair) >= 0 ? 'text-green-400' : 'text-red-400'"
+                    >
+                      {{ item.pair }}
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ item.pair.split('/')[0] }} to {{ item.pair.split('/')[1] }}</p>
                   </div>
+                  
+                  <div class="mx-3 flex-shrink-0">
+                    <svg width="60" height="20" class="mini-chart">
+                      <path
+                        v-if="getWishlistMiniPath(item.pair)"
+                        :d="getWishlistMiniPath(item.pair)"
+                        fill="none"
+                        :stroke="getWishlistChange(item.pair) >= 0 ? '#10b981' : '#ef4444'"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </div>
+
                   <div class="text-right">
-                    <p class="font-mono text-white text-sm">${{ item.price.toFixed(2) }}</p>
-                    <p class="text-xs font-semibold mt-0.5" :class="item.change >= 0 ? 'text-green-400' : 'text-red-400'">
-                      {{ item.change >= 0 ? '+' : '' }}{{ item.change.toFixed(2) }}%
+                    <p class="font-mono text-sm text-white">{{ getWishlistPrice(item.pair) }}</p>
+                    <p class="text-xs font-semibold" :class="getWishlistChange(item.pair) >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ getWishlistChange(item.pair) >= 0 ? '+' : '' }}{{ getWishlistChange(item.pair).toFixed(2) }}%
                     </p>
                   </div>
                 </div>
@@ -120,12 +148,7 @@
             
             <!-- Wishlist Footer -->
             <div class="widget-footer">
-              <div class="flex justify-between items-center">
-                <p class="text-xs text-gray-400">{{ wishlistItems.length }} assets tracked</p>
-                <button class="text-xs text-primary hover:text-primary/80 font-bold transition">
-                  View All →
-                </button>
-              </div>
+              <p class="text-xs text-gray-400">{{ portfolioStore.wishlist.length }} pairs tracked</p>
             </div>
           </div>
 
@@ -154,27 +177,29 @@
               </div>
             </div>
             <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1 overflow-auto">
-              <!-- Feed Items -->
-              <div class="space-y-1.5">
-                <div
+              <div v-if="feedItems.length === 0" class="flex items-center justify-center py-8 text-gray-500 text-sm text-center px-2">
+                {{ portfolioStore.holdings.length === 0 
+                  ? 'No holdings yet. Add currencies to see relevant news.' 
+                  : 'Loading news feed...' }}
+              </div>
+              <div v-else class="space-y-1.5">
+                <a
                   v-for="item in feedItems"
                   :key="item.id"
-                  class="px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
+                  :href="item.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
                 >
                   <p class="text-sm text-white font-medium group-hover:text-primary transition">{{ item.title }}</p>
                   <p class="text-xs text-gray-500 mt-1">{{ item.time }}</p>
-                </div>
+                </a>
               </div>
             </div>
             
             <!-- Feed Footer -->
             <div class="widget-footer">
-              <div class="flex justify-between items-center">
-                <p class="text-xs text-gray-400">Last updated: Just now</p>
-                <button class="text-xs text-primary hover:text-primary/80 font-bold transition">
-                  Refresh →
-                </button>
-              </div>
+              <p class="text-xs text-gray-400">Last updated: Just now</p>
             </div>
           </div>
         </template>
@@ -205,17 +230,36 @@
                 </svg>
               </div>
               <div>
-                <h2 class="text-xl font-bold text-white">Portfolio</h2>
+                <h2 class="text-xl font-bold text-white">Portfolio Value</h2>
                 <p class="text-2xl font-bold mt-0.5 text-white">
-                  ${{ totalPortfolioValue.toFixed(2) }}
+                  ${{ totalPortfolioValue.toFixed(2) }} {{ defaultCurrency }}
                 </p>
               </div>
             </div>
-            <div class="text-right">
-              <p class="text-xs text-gray-500 mb-1">24h Change</p>
-              <p class="text-lg font-bold" :class="portfolioChange >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ portfolioChange >= 0 ? '+' : '' }}{{ portfolioChange.toFixed(2) }}%
-              </p>
+            <div class="flex items-center gap-4">
+              <div class="flex flex-col gap-1">
+                <p class="text-xs text-gray-500 italic">
+                  Total value (all currencies converted to {{ defaultCurrency }})
+                </p>
+                <div v-if="portfolioStore.historyData?.total_deposited != null" class="flex items-center gap-3 text-xs">
+                  <span class="text-gray-400">
+                    Principal: <span class="font-mono text-gray-300">${{ portfolioStore.historyData.total_deposited.toFixed(2) }}</span>
+                  </span>
+                  <span class="text-gray-400">•</span>
+                  <span :class="[
+                    'font-semibold',
+                    (portfolioStore.historyData.net_gain_loss || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                  ]">
+                    Net: {{ (portfolioStore.historyData.net_gain_loss || 0) >= 0 ? '+' : '' }}${{ Math.abs(portfolioStore.historyData.net_gain_loss || 0).toFixed(2) }}
+                  </span>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-gray-500 mb-1">{{ selectedPeriodDisplayLabel }} change</p>
+                <p class="text-lg font-bold" :class="portfolioChange >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ portfolioChange >= 0 ? '+' : '' }}{{ portfolioChange.toFixed(2) }}%
+                </p>
+              </div>
             </div>
           </div>
 
@@ -294,21 +338,7 @@
           </Teleport>
 
           <div class="bg-bg-primary rounded-lg p-4 flex-1 flex flex-col overflow-hidden" style="min-height: 350px; max-height: 350px;">
-            <!-- Date Range Selector -->
-            <div class="flex gap-1.5 mb-3 flex-shrink-0">
-              <button
-                v-for="p in periods"
-                :key="p.value"
-                @click="selectPeriod(p.value)"
-                :class="[
-                  'px-3 py-1 rounded text-xs font-bold transition-all',
-                  portfolioStore.selectedPeriod === p.value
-                    ? 'bg-primary text-black'
-                    : 'bg-bg-secondary text-gray-400 hover:text-white hover:bg-bg-secondary/80'
-                ]"
-              >{{ p.label }}</button>
-            </div>
-
+            <!-- Chart Area -->
             <div v-if="portfolioStore.loading && !portfolioStore.historyData" class="flex items-center justify-center h-full">
               <div class="h-48 w-full bg-bg-secondary rounded-lg animate-pulse"></div>
             </div>
@@ -319,8 +349,8 @@
               No holdings yet. Deposit funds to get started.
             </div>
             <div v-else class="relative flex flex-col justify-center items-center h-full w-full" style="padding-right: 1rem;">
-              <!-- Loading overlay -->
-              <div v-if="portfolioStore.historyLoading" class="absolute inset-0 flex items-center justify-center bg-bg-primary/60 z-10 rounded-lg">
+              <!-- Loading overlay (only shown during refresh, not initial load) -->
+              <div v-if="portfolioStore.historyLoading && portfolioStore.historyData" class="absolute inset-0 flex items-center justify-center bg-bg-primary/60 z-10 rounded-lg">
                 <div class="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
               </div>
               <!-- History error -->
@@ -329,7 +359,77 @@
               </div>
               <!-- Portfolio Line Chart -->
               <div class="w-full h-full flex items-center justify-center">
-                <Line :data="portfolioLineChartData" :options="portfolioLineChartOptions" />
+                <Line
+                  :data="portfolioLineChartData"
+                  :options="portfolioLineChartOptions"
+                />
+              </div>
+            </div>
+            
+            <!-- Controls: Timeline Slider (left) + Total/Relative Toggle (right) -->
+            <div class="flex items-center justify-between px-4 py-2 flex-shrink-0">
+              <!-- Left: Timeline Slider -->
+              <div class="w-80 pl-0 pr-4">
+                <div class="relative">
+                  <div class="absolute top-1/2 -translate-y-1/2 w-full h-0.5 bg-gray-700"></div>
+                  <div class="relative flex justify-between items-center">
+                    <button
+                      v-for="period in periods"
+                      :key="period.value"
+                      @click="selectPeriod(period.value)"
+                      :disabled="isPeriodDisabled(period.value)"
+                      class="relative flex flex-col items-center group"
+                      :title="isPeriodDisabled(period.value) ? 'Not enough transaction history' : `${period.label} - ${getPeriodDateLabel(period.value)}`"
+                    >
+                      <div :class="[
+                        'w-3 h-3 rounded-full border-2 transition-all z-10',
+                        isPeriodDisabled(period.value)
+                          ? 'bg-gray-800 border-gray-700 cursor-not-allowed opacity-40'
+                          : portfolioStore.selectedPeriod === period.value
+                            ? 'bg-primary border-primary scale-125 shadow-lg shadow-primary/50 cursor-pointer'
+                            : 'bg-bg-primary border-gray-600 group-hover:border-primary group-hover:scale-110 cursor-pointer'
+                      ]"></div>
+                      <span :class="[
+                        'absolute top-5 text-xs font-semibold whitespace-nowrap transition-all',
+                        isPeriodDisabled(period.value)
+                          ? 'text-gray-700'
+                          : portfolioStore.selectedPeriod === period.value
+                            ? 'text-primary'
+                            : 'text-gray-500 group-hover:text-gray-300'
+                      ]">
+                        {{ period.label }}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Total/Relative Toggle -->
+              <div class="flex gap-2 flex-shrink-0">
+                <button
+                  @click="portfolioChartMode = 'total'"
+                  :class="[
+                    'px-2 py-1.5 rounded-lg text-xs font-bold transition-all border-2',
+                    portfolioChartMode === 'total'
+                      ? 'bg-green-600 border-green-600 text-white'
+                      : 'bg-bg-primary text-gray-400 border-gray-700 hover:text-white hover:border-gray-600'
+                  ]"
+                  title="Total Portfolio Value"
+                >
+                  TOTAL
+                </button>
+                <button
+                  @click="portfolioChartMode = 'relative'"
+                  :class="[
+                    'px-2 py-1.5 rounded-lg text-xs font-bold transition-all border-2',
+                    portfolioChartMode === 'relative'
+                      ? 'bg-green-600 border-green-600 text-white'
+                      : 'bg-bg-primary text-gray-400 border-gray-700 hover:text-white hover:border-gray-600'
+                  ]"
+                  title="Relative Percentage Change"
+                >
+                  RELATIVE
+                </button>
               </div>
             </div>
           </div>
@@ -403,31 +503,41 @@
             </div>
           </div>
           
-          <div class="bg-bg-primary rounded-lg p-4 flex-1 overflow-auto">
-            <div v-if="portfolioStore.loading" class="space-y-1.5">
-              <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
-              <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
-              <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+          <div class="bg-bg-primary rounded-lg p-4 flex-1 flex gap-0 overflow-hidden">
+            <!-- Left: Donut Chart (30%) -->
+            <div v-if="holdingsDonutData && portfolioStore.holdings.length > 0" class="flex-shrink-0 flex items-center justify-start pl-1 pr-2 border-r border-gray-700" style="width: 30%; min-width: 110px;">
+              <div style="width: 100%; height: 140px;">
+                <Doughnut :data="holdingsDonutData" :options="holdingsDonutOptions" />
+              </div>
             </div>
-            <div v-else-if="portfolioStore.error" class="flex items-center justify-center h-full text-red-400 text-sm">
-              {{ portfolioStore.error }}
-            </div>
-            <div v-else-if="portfolioStore.holdings.length === 0" class="flex items-center justify-center h-full text-gray-500 text-sm">
-              No holdings yet
-            </div>
-            <div v-else class="space-y-1.5">
-              <div
-                v-for="holding in portfolioStore.holdings"
-                :key="holding['currency-ticker-symbol'] || holding.currency"
-                class="flex justify-between items-center px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
-              >
-                <div>
-                  <p class="font-bold text-white text-sm group-hover:text-primary transition">{{ holding['currency-ticker-symbol'] || holding.currency }}</p>
-                  <p class="text-xs text-gray-500 mt-0.5">{{ holding.currency || 'Currency' }}</p>
-                </div>
-                <div class="text-right">
-                  <p class="font-mono text-white text-sm">{{ Number(holding.amount).toFixed(2) }}</p>
-                  <p class="text-xs text-gray-500 mt-0.5">${{ (Number(holding.amount) * 1.2).toFixed(2) }}</p>
+            
+            <!-- Right: Holdings List (70%) - scrollable after 3 items -->
+            <div class="flex-1 overflow-auto holdings-list-scroll pl-3">
+              <div v-if="portfolioStore.loading && portfolioStore.holdings.length === 0" class="space-y-1.5">
+                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+                <div class="h-12 bg-bg-secondary rounded-lg animate-pulse"></div>
+              </div>
+              <div v-else-if="portfolioStore.error" class="flex items-center justify-center h-full text-red-400 text-sm">
+                {{ portfolioStore.error }}
+              </div>
+              <div v-else-if="portfolioStore.holdings.length === 0" class="flex items-center justify-center h-full text-gray-500 text-sm">
+                No holdings yet
+              </div>
+              <div v-else class="space-y-1.5">
+                <div
+                  v-for="holding in portfolioStore.holdings"
+                  :key="holding['currency-ticker-symbol'] || holding.currency"
+                  class="flex justify-between items-center px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
+                >
+                  <div>
+                    <p class="font-bold text-white text-sm group-hover:text-primary transition">{{ holding['currency-ticker-symbol'] || holding.currency }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ holding.currency || 'Currency' }}</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-mono text-white text-sm">{{ Number(holding.amount).toFixed(2) }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">units</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -435,12 +545,7 @@
           
           <!-- Holdings Footer -->
           <div class="widget-footer">
-            <div class="flex justify-between items-center">
-              <p class="text-xs text-gray-400">{{ portfolioStore.holdings?.length || 0 }} currencies held</p>
-              <button class="text-xs text-primary hover:text-primary/80 font-bold transition">
-                Manage →
-              </button>
-            </div>
+            <p class="text-xs text-gray-400">{{ portfolioStore.holdings?.length || 0 }} currencies held</p>
           </div>
         </div>
         </template>
@@ -450,11 +555,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '@/stores/portfolio'
-import { forexApi } from '@/services/api'
-import { Line } from 'vue-chartjs'
+import { useForexStore } from '@/stores/forex'
+import { useNewsStore } from '@/stores/news'
+import {
+  startOfLocalDayMs,
+  endOfLocalDayMs,
+  buildPortfolioSeriesUsd,
+  portfolioHistoryBaselineUsd
+} from '@/utils/portfolioSeries'
+import { Line, Doughnut } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -464,7 +576,8 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ArcElement
 } from 'chart.js'
 
 // Register Chart.js components
@@ -476,26 +589,21 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ArcElement
 )
 
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
+const forexStore = useForexStore()
+const newsStore = useNewsStore()
 
 // ── Currencies ───────────────────────────────────────────────────────────
-const currencies = ref([])
+// Use forex store currencies instead of fetching directly
+const currencies = computed(() => forexStore.currencies)
 
 async function fetchCurrencies() {
-  try {
-    const { data } = await forexApi.getCurrencies()
-    currencies.value = data.currencies
-  } catch {
-    currencies.value = [
-      { code: 'USD', name: 'US Dollar' },
-      { code: 'EUR', name: 'Euro' },
-      { code: 'GBP', name: 'British Pound' },
-    ]
-  }
+  // No-op: currencies come from forex store pipeline
 }
 
 // Date range periods for the chart selector
@@ -504,95 +612,128 @@ const periods = [
   { label: '1W', value: '1wk' },
   { label: '1M', value: '1mo' },
   { label: '3M', value: '3mo' },
-  { label: '6M', value: '6mo' },
+  { label: 'YTD', value: 'ytd' },
   { label: '1Y', value: '1y' },
-  { label: '3Y', value: '3y' },
   { label: '5Y', value: '5y' },
 ]
 
-function selectPeriod(period) {
-  portfolioStore.fetchHistory(period)
-}
-
-onMounted(() => {
-  fetchCurrencies()
-  portfolioStore.fetchHoldings()
-  portfolioStore.fetchHistory('1mo')
-})
-
-// Navigation function
-const goToTrading = (symbol) => {
-  router.push({ path: '/trading', query: { pair: symbol } })
-}
-
-// Format date labels based on the selected period
-function formatDateLabel(dateStr, period) {
-  const d = new Date(dateStr)
-  switch (period) {
-    case '1d':
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    case '1wk':
-      return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' +
-        d.toLocaleTimeString('en-US', { hour: 'numeric' })
-    case '1mo':
-    case '3mo':
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    case '6mo':
-    case '1y':
-      return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-    case '3y':
-    case '5y':
-      return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-    default:
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
-}
-
-// Portfolio Line Chart Data - from real yfinance historical rates
-const portfolioLineChartData = computed(() => {
-  const history = portfolioStore.historyData
-  const period = portfolioStore.selectedPeriod
-
-  // Empty / loading state
-  if (!history || !history.data_points || history.data_points.length === 0) {
-    return {
-      labels: [],
-      datasets: [{
-        label: 'Portfolio Value (USD)',
-        data: [],
-        borderColor: 'rgba(255, 215, 0, 0.3)',
-        backgroundColor: 'rgba(255, 215, 0, 0.05)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-        pointRadius: 0
-      }]
+// Calculate if a period should be disabled based on first transaction date
+const isPeriodDisabled = computed(() => {
+  return (periodValue) => {
+    if (!portfolioStore.firstTransactionDate) return false
+    
+    const firstTxDate = new Date(portfolioStore.firstTransactionDate)
+    const now = new Date()
+    const daysSinceFirstTx = Math.floor((now - firstTxDate) / (1000 * 60 * 60 * 24))
+    
+    switch (periodValue) {
+      case '1d':
+        return daysSinceFirstTx < 1
+      case '1wk':
+        return daysSinceFirstTx < 7
+      case '1mo':
+        return daysSinceFirstTx < 30
+      case '3mo':
+        return daysSinceFirstTx < 90
+      case 'ytd':
+        return firstTxDate.getFullYear() > now.getFullYear()
+      case '1y':
+        return daysSinceFirstTx < 365
+      case '5y':
+        return daysSinceFirstTx < 365 * 5
+      default:
+        return false
     }
   }
+})
 
-  const labels = history.data_points.map(dp => formatDateLabel(dp.date, period))
-  const data = history.data_points.map(dp => dp.value)
+function selectPeriod(period) {
+  if (!isPeriodDisabled.value(period)) {
+    portfolioStore.fetchHistory(period, true)
+  }
+}
 
+// Get date label for timeline periods
+function getPeriodDateLabel(periodValue) {
+  const now = new Date()
+  const targetDate = new Date()
+  
+  switch (periodValue) {
+    case '1d':
+      return 'Today'
+    case '1wk':
+      targetDate.setDate(now.getDate() - 7)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case '1mo':
+      targetDate.setMonth(now.getMonth() - 1)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case '3mo':
+      targetDate.setMonth(now.getMonth() - 3)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    case 'ytd':
+      return 'Jan 1, ' + now.getFullYear()
+    case '1y':
+      targetDate.setFullYear(now.getFullYear() - 1)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    case '5y':
+      targetDate.setFullYear(now.getFullYear() - 5)
+      return targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    default:
+      return ''
+  }
+}
+
+const selectedPeriodDisplayLabel = computed(() => {
+  const p = periods.find((x) => x.value === portfolioStore.selectedPeriod)
+  return p?.label ?? 'Period'
+})
+
+/** Total = USD value; Relative = % change from first point in range (today’s first bar for 1D). */
+const portfolioChartMode = ref('total')
+
+// Default display currency (USD for now, will be user-configurable)
+const defaultCurrency = ref('USD')
+
+// Holdings donut chart data
+const holdingsDonutData = computed(() => {
+  const holdings = portfolioStore.holdings
+  if (!holdings || holdings.length === 0) return null
+  
+  // Calculate USD value for each holding
+  const holdingsWithValue = holdings.map(h => {
+    const ticker = h['currency-ticker-symbol'] || h.currency
+    const amount = Number(h.amount)
+    const rate = forexStore.getRate(ticker, defaultCurrency.value)
+    const value = amount * (rate || 1)
+    return { ticker, amount, value }
+  })
+  
+  const total = holdingsWithValue.reduce((sum, h) => sum + h.value, 0)
+  
+  // Generate colors matching currency theme (gold, silver, bronze, jewel tones)
+  const colors = [
+    '#fbbf24', // gold
+    '#9ca3af', // silver
+    '#cd7f32', // bronze/copper
+    '#10b981', // emerald
+    '#3b82f6', // sapphire blue
+    '#a855f7', // amethyst purple
+    '#06b6d4', // aquamarine
+    '#ef4444', // ruby red
+  ]
+  
   return {
-    labels,
+    labels: holdingsWithValue.map(h => h.ticker),
     datasets: [{
-      label: 'Portfolio Value (USD)',
-      data,
-      borderColor: 'rgba(255, 215, 0, 1)',
-      backgroundColor: 'rgba(255, 215, 0, 0.1)',
-      borderWidth: 2,
-      tension: 0.4,
-      fill: true,
-      pointRadius: 0,
-      pointHoverRadius: 6,
-      pointBackgroundColor: 'rgba(255, 215, 0, 1)',
-      pointBorderColor: '#1a1a1a',
-      pointBorderWidth: 2
+      data: holdingsWithValue.map(h => ((h.value / total) * 100).toFixed(1)),
+      backgroundColor: colors.slice(0, holdingsWithValue.length),
+      borderColor: '#0a0a14',
+      borderWidth: 2
     }]
   }
 })
 
-const portfolioLineChartOptions = {
+const holdingsDonutOptions = {
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
@@ -600,95 +741,432 @@ const portfolioLineChartOptions = {
       display: false
     },
     tooltip: {
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      titleColor: '#fff',
-      bodyColor: '#fff',
-      borderColor: 'rgba(255, 215, 0, 0.5)',
-      borderWidth: 1,
-      displayColors: false,
       callbacks: {
-        label: function(context) {
-          return '$' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        label: (context) => {
+          return `${context.label}: ${context.parsed}%`
         }
       }
     }
   },
-  scales: {
-    x: {
-      grid: {
-        display: false,
-        drawBorder: false
-      },
-      ticks: {
-        color: '#6b7280',
-        font: {
-          size: 10
-        },
-        maxRotation: 0,
-        autoSkipPadding: 20
-      }
-    },
-    y: {
-      grid: {
-        color: 'rgba(255, 255, 255, 0.05)',
-        drawBorder: false
-      },
-      ticks: {
-        color: '#6b7280',
-        font: {
-          size: 11
-        },
-        callback: function(value) {
-          return '$' + (value / 1000).toFixed(1) + 'k'
-        }
-      }
+  cutout: '65%'
+}
+
+const PORTFOLIO_REFRESH_INTERVAL_MS = 5_000  // Re-fetch holdings/history every 5s (configurable)
+let portfolioRefreshTimer = null
+
+onMounted(() => {
+  // Currencies are auto-loaded by forex store pipeline (no need to call fetchCurrencies)
+  portfolioStore.fetchHoldings()
+  portfolioStore.fetchHistory('1mo')
+  portfolioStore.fetchFirstTransactionDate()  // Fetch first transaction date
+  loadFeedNews()  // Load news feed on mount
+  loadWishlistSparklines()  // Load wishlist sparklines on mount
+  portfolioRefreshTimer = setInterval(async () => {
+    const result = await portfolioStore.fetchHoldings()
+    // Only refetch history if holdings actually changed
+    if (result?.holdingsChanged) {
+      portfolioStore.fetchHistory(portfolioStore.selectedPeriod, true)
+      loadFeedNews()  // Reload news when holdings change
     }
-  },
-  interaction: {
-    intersect: false,
-    mode: 'index'
+  }, PORTFOLIO_REFRESH_INTERVAL_MS)
+})
+
+onUnmounted(() => {
+  if (portfolioRefreshTimer) clearInterval(portfolioRefreshTimer)
+})
+
+// Watch wishlist changes to reload sparklines
+watch(
+  () => portfolioStore.wishlist.map((w) => w.pair).join('|'),
+  () => {
+    loadWishlistSparklines()
+  }
+)
+
+// Navigation function
+const goToTrading = (symbol) => {
+  router.push({ path: '/trading', query: { pair: symbol } })
+}
+
+function datasetStyleForMode(mode) {
+  return {
+    label: mode === 'relative' ? 'Change from start of range (%)' : 'Portfolio Value (USD)',
+    borderColor: 'rgba(255, 215, 0, 1)',
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderWidth: 2,
+    tension: 0.4,
+    fill: true,
+    pointRadius: 0,
+    pointHoverRadius: 6,
+    pointBackgroundColor: 'rgba(255, 215, 0, 1)',
+    pointBorderColor: '#1a1a1a',
+    pointBorderWidth: 2
   }
 }
 
-// Portfolio value from the latest history data point (in USD)
-const totalPortfolioValue = computed(() => {
+/** % change from baseline; baseline is first sample in the visible series. */
+function toRelativePercentPoints(points, baselineUsd) {
+  if (baselineUsd == null || baselineUsd === 0) return points
+  return points.map((p) => ({
+    ...p,
+    y: ((p.y / baselineUsd) - 1) * 100
+  }))
+}
+
+// Portfolio Line Chart Data — same USD series as headline (buildPortfolioSeriesUsd)
+const portfolioLineChartData = computed(() => {
   const history = portfolioStore.historyData
-  if (!history || !history.data_points || history.data_points.length === 0) {
-    // Fallback to raw sum of holdings
-    if (!portfolioStore.holdings || portfolioStore.holdings.length === 0) return 0
-    return portfolioStore.holdings.reduce((sum, holding) => sum + Number(holding.amount), 0)
+  const period = portfolioStore.selectedPeriod
+  const mode = portfolioChartMode.value
+  const ds = datasetStyleForMode(mode)
+
+  const series = buildPortfolioSeriesUsd(history, period)
+
+  if (series.type === 'empty') {
+    return {
+      labels: [],
+      datasets: [{
+        ...ds,
+        borderColor: 'rgba(255, 215, 0, 0.3)',
+        backgroundColor: 'rgba(255, 215, 0, 0.05)',
+        data: []
+      }]
+    }
   }
-  return history.data_points[history.data_points.length - 1].value
+
+  if (series.type === 'xy') {
+    let data = [...series.data]
+    const baseline = portfolioHistoryBaselineUsd(history, period)
+    if (mode === 'relative' && baseline != null && baseline !== 0) {
+      data = toRelativePercentPoints(data, baseline)
+    }
+    return {
+      datasets: [{ ...ds, data }]
+    }
+  }
+
+  let data = [...series.data]
+  const baseline = portfolioHistoryBaselineUsd(history, period)
+  if (mode === 'relative' && baseline != null && baseline !== 0) {
+    data = data.map((v) => ((v / baseline) - 1) * 100)
+  }
+
+  return {
+    labels: series.labels,
+    datasets: [{ ...ds, data }]
+  }
 })
 
-// Calculate change over the selected period (first vs last data point)
-const portfolioChange = computed(() => {
+const portfolioLineChartOptions = computed(() => {
+  const period = portfolioStore.selectedPeriod
+  const mode = portfolioChartMode.value
   const history = portfolioStore.historyData
-  if (!history || !history.data_points || history.data_points.length < 2) return 0
+  const baseline = portfolioHistoryBaselineUsd(history, period)
+  const relative =
+    mode === 'relative' && baseline != null && baseline !== 0
+  const dayStart = startOfLocalDayMs()
+  const dayEnd = endOfLocalDayMs()
 
-  const firstValue = history.data_points[0].value
-  const lastValue = history.data_points[history.data_points.length - 1].value
+  const yTickUsd = function (value) {
+    return '$' + (value / 1000).toFixed(1) + 'k'
+  }
+  const yTickPct = function (value) {
+    const v = Number(value)
+    const s = (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+    return s
+  }
 
-  if (!firstValue || firstValue === 0) return 0
-  return ((lastValue - firstValue) / firstValue) * 100
+  const yScaleBase = {
+    grid: {
+      color: 'rgba(255, 255, 255, 0.05)',
+      drawBorder: false
+    },
+    ticks: {
+      color: relative ? '#9ca3af' : '#6b7280',
+      font: {
+        size: 11
+      },
+      callback: relative ? yTickPct : yTickUsd
+    }
+  }
+
+  const base = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        borderColor: 'rgba(255, 215, 0, 0.5)',
+        borderWidth: 1,
+        displayColors: false,
+        callbacks: {
+          title: (items) => {
+            if (!items.length) return ''
+            const ctx = items[0]
+            if (period === '1d' && ctx.parsed.x != null) {
+              return new Date(ctx.parsed.x).toLocaleString('en-US', {
+                weekday: 'short',
+                hour: 'numeric',
+                minute: '2-digit'
+              })
+            }
+            return ctx.label || ''
+          },
+          label: (context) => {
+            const y = context.parsed.y
+            if (y == null || Number.isNaN(Number(y))) return ''
+
+            const b = baseline
+            let usd
+            let pct = null
+
+            if (relative) {
+              pct = Number(y)
+              usd =
+                b != null && b !== 0 && Number.isFinite(pct)
+                  ? b * (1 + pct / 100)
+                  : null
+            } else {
+              usd = Number(y)
+              pct =
+                b != null && b !== 0 && usd != null && Number.isFinite(usd)
+                  ? (usd / b - 1) * 100
+                  : null
+            }
+
+            const usdStr =
+              usd != null && Number.isFinite(usd)
+                ? '$' +
+                  usd.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })
+                : null
+
+            const lines = []
+            if (usdStr) lines.push(usdStr)
+            if (pct != null && Number.isFinite(pct)) {
+              lines.push((pct >= 0 ? '+' : '') + pct.toFixed(2) + '%')
+            }
+
+            if (lines.length === 0) return ''
+            return lines.length === 1 ? lines[0] : lines
+          }
+        }
+      }
+    },
+    scales: {
+      y: yScaleBase
+    },
+    interaction: {
+      intersect: false,
+      mode: period === '1d' ? 'nearest' : 'index'
+    }
+  }
+
+  if (period === '1d') {
+    return {
+      ...base,
+      scales: {
+        ...base.scales,
+        x: {
+          type: 'linear',
+          min: dayStart,
+          max: dayEnd,
+          grid: {
+            display: false,
+            drawBorder: false
+          },
+          ticks: {
+            color: '#6b7280',
+            font: { size: 10 },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 7,
+            callback: (value) =>
+              typeof value === 'number'
+                ? new Date(value).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit'
+                  })
+                : value
+          }
+        },
+        y: yScaleBase
+      }
+    }
+  }
+
+  return {
+    ...base,
+    scales: {
+      ...base.scales,
+      x: {
+        grid: {
+          display: false,
+          drawBorder: false
+        },
+        ticks: {
+          color: '#6b7280',
+          font: {
+            size: 10
+          },
+          maxRotation: 0,
+          autoSkipPadding: 20
+        }
+      },
+      y: yScaleBase
+    }
+  }
 })
 
-// Wishlist template data - Forex pairs
-const wishlistItems = ref([
-  { symbol: 'EUR/USD', name: 'Euro / US Dollar', price: 1.0876, change: 0.12 },
-  { symbol: 'GBP/USD', name: 'British Pound / US Dollar', price: 1.2654, change: -0.08 },
-  { symbol: 'USD/JPY', name: 'US Dollar / Japanese Yen', price: 149.87, change: 0.34 },
-  { symbol: 'AUD/USD', name: 'Australian Dollar / US Dollar', price: 0.6523, change: -0.15 }
-])
+function sumHoldingsAmountFallback() {
+  if (!portfolioStore.holdings?.length) return 0
+  return portfolioStore.holdings.reduce((sum, h) => sum + Number(h.amount), 0)
+}
 
-// Feed template data - Forex related
-const feedItems = ref([
-  { id: 1, title: 'EUR/USD broke resistance at 1.0850', time: '2 hours ago' },
-  { id: 2, title: 'Deposited $500 USD to trading account', time: '5 hours ago' },
-  { id: 3, title: 'GBP/USD reached target price of 1.2650', time: '1 day ago' },
-  { id: 4, title: 'USD strengthening against major pairs', time: '2 days ago' },
-  { id: 5, title: 'New forex signal: Buy EUR/USD', time: '3 days ago' }
-])
+/** Same series as chart: last USD point = headline value; % vs first point in range. */
+const portfolioHeadlineMetrics = computed(() => {
+  const history = portfolioStore.historyData
+  const period = portfolioStore.selectedPeriod
+  const s = buildPortfolioSeriesUsd(history, period)
+  if (s.type === 'empty') {
+    return { value: sumHoldingsAmountFallback(), changePct: 0 }
+  }
+  const first = s.type === 'xy' ? s.data[0]?.y : s.data[0]
+  const last =
+    s.type === 'xy' ? s.data[s.data.length - 1]?.y : s.data[s.data.length - 1]
+  if (first == null || last == null) {
+    return { value: sumHoldingsAmountFallback(), changePct: 0 }
+  }
+  return {
+    value: last,
+    changePct: first !== 0 ? ((last - first) / first) * 100 : 0
+  }
+})
+
+const totalPortfolioValue = computed(() => portfolioHeadlineMetrics.value.value)
+
+const portfolioChange = computed(() => portfolioHeadlineMetrics.value.changePct)
+
+// Populated when watchlist / activity APIs exist; empty = no mock data
+const wishlistItems = ref([])
+const feedItems = ref([])
+
+// Wishlist sparklines (mini charts)
+const wishlistSparklines = ref({})  // { 'USD/EUR': { closes: [...], change1d: 0.5 } }
+
+function getCloses1d(candles) {
+  if (!candles?.length) return []
+  return candles.map((c) => c.close).filter((n) => n > 0 && Number.isFinite(n))
+}
+
+function getChange1d(candles) {
+  if (!candles?.length || candles.length < 2) return 0
+  const first = candles[0].close
+  const last = candles[candles.length - 1].close
+  if (!first || first === 0) return 0
+  return ((last - first) / first) * 100
+}
+
+function getMiniChartPath(data) {
+  if (!data || data.length < 2) return ''
+  const width = 60
+  const height = 20
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  return (
+    'M ' +
+    data
+      .map((value, index) => {
+        const x = (index / (data.length - 1)) * width
+        const y = height - ((value - min) / range) * height
+        return `${x},${y}`
+      })
+      .join(' L ')
+  )
+}
+
+async function loadWishlistSparklines() {
+  if (portfolioStore.wishlist.length === 0) return
+  const pairs = portfolioStore.wishlist.map((w) => w.pair)
+  const next = { ...wishlistSparklines.value }
+  await Promise.all(
+    pairs.map(async (pair) => {
+      const parts = pair.split('/')
+      if (parts.length !== 2) return
+      const [f, t] = parts
+      const cached = forexStore.getCachedPairHistory(f, t, '1d')
+      const candles = cached?.candles || []
+      if (candles.length > 0) {
+        next[pair] = {
+          closes: getCloses1d(candles),
+          change1d: getChange1d(candles)
+        }
+      } else {
+        const result = await forexStore.fetchPairHistory(f, t, '1d')
+        const newCandles = result.candles || []
+        next[pair] = {
+          closes: getCloses1d(newCandles),
+          change1d: getChange1d(newCandles)
+        }
+      }
+    })
+  )
+  wishlistSparklines.value = next
+}
+
+function getWishlistMiniPath(pair) {
+  const data = wishlistSparklines.value[pair]
+  return getMiniChartPath(data?.closes || [])
+}
+
+function getWishlistChange(pair) {
+  const data = wishlistSparklines.value[pair]
+  return data?.change1d || 0
+}
+
+function getWishlistPrice(pair) {
+  const [from, to] = pair.split('/')
+  const rate = forexStore.getRate(from, to)
+  return rate ? rate.toFixed(4) : '—'
+}
+
+// Load news feed based on holdings (using cached store)
+async function loadFeedNews() {
+  try {
+    const holdings = portfolioStore.holdings
+    if (holdings.length === 0) {
+      feedItems.value = []
+      return
+    }
+    
+    // Build more specific query from held currencies
+    const heldCurrencies = holdings.map(h => h['currency-ticker-symbol'] || h.currency)
+    // Use AND to ensure forex relevance, limit to 3-4 currencies to avoid too broad query
+    const topCurrencies = heldCurrencies.slice(0, 4).join(' ')
+    const query = `${topCurrencies} forex market`
+    
+    // Use cached news store
+    const articles = await newsStore.fetchNews(query, 5)
+    
+    feedItems.value = articles.slice(0, 5).map(article => ({
+      id: article.id,
+      title: article.headline,
+      time: article.date,
+      url: article.url
+    }))
+  } catch (err) {
+    console.error('Failed to load feed news:', err)
+    feedItems.value = []
+  }
+}
 
 // Deposit modal state
 const showDepositModal = ref(false)
@@ -920,5 +1398,51 @@ if (savedSideOrder) {
 
 .portfolio-widget > div:first-child {
   flex: 1;
+}
+
+/* Holdings list scroll - max height for 3 items then scroll */
+.holdings-list-scroll {
+  max-height: calc(3 * (48px + 6px));
+}
+
+.holdings-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.holdings-list-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.holdings-list-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.holdings-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Wishlist scroll styles */
+.wishlist-scroll {
+  max-height: 400px;
+}
+
+.wishlist-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wishlist-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.wishlist-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.wishlist-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 </style>

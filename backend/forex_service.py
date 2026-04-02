@@ -1,14 +1,21 @@
 """
 Forex rate service — uses yfinance for live currency pair rates.
 Results are cached in-process for CACHE_TTL seconds.
-Historical rates are cached separately with a longer TTL.
+Historical rates are also persisted to disk for cross-user efficiency.
 """
 
 import time
+import json
+import os
+from pathlib import Path
 import yfinance as yf
 
-CACHE_TTL = 10  # seconds between live fetches for the same pair
-HISTORY_CACHE_TTL = 300  # 5 minutes for historical data
+CACHE_TTL = 5  # seconds between live rate fetches (per-pair spot quotes)
+HISTORY_CACHE_TTL = 300  # seconds for historical data (OHLC, historical rates)
+
+# Persistent cache directory
+CACHE_DIR = Path(__file__).parent / ".cache"
+CACHE_DIR.mkdir(exist_ok=True)
 
 # All currencies supported by yfinance forex feeds.
 # Dict maps 3-letter ISO code -> full name.
@@ -70,6 +77,30 @@ SUPPORTED_CURRENCIES: dict[str, str] = {
 _cache: dict[str, tuple[float, float]] = {}  # key -> (rate, fetched_at)
 _history_cache: dict[str, tuple[list[dict], float]] = {}  # key -> (data, fetched_at)
 
+
+def _load_from_disk(cache_key: str) -> tuple[any, float] | None:
+    """Load cached data from disk if it exists and is valid."""
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    if not cache_file.exists():
+        return None
+    try:
+        with open(cache_file, 'r') as f:
+            cached = json.load(f)
+        return cached['data'], cached['fetched_at']
+    except Exception:
+        return None
+
+
+def _save_to_disk(cache_key: str, data: any, fetched_at: float):
+    """Persist cached data to disk for cross-user sharing."""
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    try:
+        with open(cache_file, 'w') as f:
+            json.dump({'data': data, 'fetched_at': fetched_at}, f)
+    except Exception as e:
+        print(f"Warning: Could not write cache to disk: {e}")
+
+
 # Map UI period labels to yfinance (period, interval) pairs
 PERIOD_MAP: dict[str, tuple[str, str]] = {
     "1d":  ("1d",  "5m"),
@@ -77,6 +108,7 @@ PERIOD_MAP: dict[str, tuple[str, str]] = {
     "1mo": ("1mo", "1d"),
     "3mo": ("3mo", "1d"),
     "6mo": ("6mo", "1d"),
+    "ytd": ("ytd", "1d"),
     "1y":  ("1y",  "1d"),
     "3y":  ("3y",  "1wk"),
     "5y":  ("5y",  "1wk"),
@@ -135,7 +167,7 @@ def get_historical_rates(
     """
     Return historical exchange rates as [{"date": ISO str, "rate": float}, ...].
     ``period`` must be a key in PERIOD_MAP (e.g. "1mo", "3mo", "1y").
-    Results are cached for HISTORY_CACHE_TTL seconds.
+    Results are cached in-memory and on disk for cross-user efficiency.
     """
     from_currency = from_currency.upper()
     to_currency = to_currency.upper()
@@ -150,9 +182,18 @@ def get_historical_rates(
     key = f"{from_currency}{to_currency}:{period}"
     now = time.time()
 
+    # Check in-memory cache first
     cached_data, fetched_at = _history_cache.get(key, (None, 0))
     if cached_data is not None and (now - fetched_at) < HISTORY_CACHE_TTL:
         return cached_data
+
+    # Check disk cache
+    disk_cache = _load_from_disk(f"hist_{key}")
+    if disk_cache:
+        cached_data, fetched_at = disk_cache
+        if (now - fetched_at) < HISTORY_CACHE_TTL:
+            _history_cache[key] = (cached_data, fetched_at)
+            return cached_data
 
     try:
         ticker = yf.Ticker(f"{from_currency}{to_currency}=X")
@@ -175,4 +216,80 @@ def get_historical_rates(
             data.append({"date": ts.isoformat(), "rate": rate})
 
     _history_cache[key] = (data, now)
+    _save_to_disk(f"hist_{key}", data, now)
     return data
+
+
+_ohlc_cache: dict[str, tuple[list[dict], float]] = {}
+
+
+def get_historical_ohlc(
+    from_currency: str, to_currency: str, period: str
+) -> list[dict]:
+    """
+    OHLC bars for charting: [{"time": unix_secs, "open", "high", "low", "close"}, ...].
+    Results are cached in-memory and on disk for cross-user efficiency.
+    """
+    from_currency = from_currency.upper()
+    to_currency = to_currency.upper()
+
+    if from_currency == to_currency:
+        return []
+
+    if period not in PERIOD_MAP:
+        raise ValueError(f"Invalid period '{period}'. Must be one of {list(PERIOD_MAP)}")
+
+    key = f"ohlc:{from_currency}{to_currency}:{period}"
+    now = time.time()
+    
+    # Check in-memory cache
+    cached, fetched_at = _ohlc_cache.get(key, (None, 0))
+    if cached is not None and (now - fetched_at) < HISTORY_CACHE_TTL:
+        return cached
+
+    # Check disk cache
+    disk_cache = _load_from_disk(key)
+    if disk_cache:
+        cached, fetched_at = disk_cache
+        if (now - fetched_at) < HISTORY_CACHE_TTL:
+            _ohlc_cache[key] = (cached, fetched_at)
+            return cached
+
+    yf_period, yf_interval = PERIOD_MAP[period]
+
+    try:
+        ticker = yf.Ticker(f"{from_currency}{to_currency}=X")
+        hist = ticker.history(period=yf_period, interval=yf_interval)
+        if hist.empty:
+            raise ValueError(
+                f"No OHLC data for {from_currency}/{to_currency} period={period}"
+            )
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            f"Could not fetch OHLC for {from_currency}/{to_currency}: {exc}"
+        )
+
+    out: list[dict] = []
+    for ts, row in hist.iterrows():
+        close = float(row["Close"])
+        if close <= 0 or close != close:  # NaN
+            continue
+        o = float(row["Open"]) if row["Open"] == row["Open"] else close
+        h = float(row["High"]) if row["High"] == row["High"] else close
+        lo = float(row["Low"]) if row["Low"] == row["Low"] else close
+        t = int(ts.timestamp())
+        out.append(
+            {
+                "time": t,
+                "open": o,
+                "high": max(h, o, lo, close),
+                "low": min(lo, o, h, close),
+                "close": close,
+            }
+        )
+
+    _ohlc_cache[key] = (out, now)
+    _save_to_disk(key, out, now)
+    return out
