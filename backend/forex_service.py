@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import yfinance as yf
 
-CACHE_TTL = 5  # seconds between live rate fetches (per-pair spot quotes)
+CACHE_TTL = 4  # seconds between live rate fetches (per-pair spot quotes)
 HISTORY_CACHE_TTL = 300  # seconds for historical data (OHLC, historical rates)
 
 # Persistent cache directory
