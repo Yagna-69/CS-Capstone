@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     frontend_url: str = "http://localhost:5173"
+    # Additional allowed origins for CORS (comma-separated)
+    additional_origins: str = ""
     # Broker account: a dedicated Supabase auth user whose UUID acts as the exchange counterparty
     broker_user_id: str = ""
     # Gemini API key — reserved for future AI insight feature

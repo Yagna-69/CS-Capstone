@@ -54,7 +54,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            --set-env-vars SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_KEY=${{ secrets.SUPABASE_KEY }},SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }},FRONTEND_URL=${{ secrets.FRONTEND_URL }},ADDITIONAL_ORIGINS=${{ secrets.ADDITIONAL_ORIGINS }},NEWSAPI_KEY=${{ secrets.NEWSAPI_KEY }}
 
       - name: Show service URL
         run: gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)'
