@@ -228,6 +228,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import NewsStoryCard from '@/components/NewsStoryCard.vue'
 import { useNewsStore } from '@/stores/news'
 import { newsApi } from '@/services/api'
+import { fetchWallstreetbetsPosts } from '@/composables/useReddit'
 
 const newsStore = useNewsStore()
 
@@ -424,14 +425,15 @@ async function loadWsbPosts() {
   wsbError.value = null
   
   try {
-    const { data } = await newsApi.getWsbPosts(12)
-    
-    if (data.status === 'ok' && data.posts) {
-      wsbPosts.value = data.posts
+    console.log('[WSB] Fetching from Reddit directly (frontend-side)...')
+    // Fetch directly from Reddit in the frontend to avoid GCP IP blocking
+    wsbPosts.value = await fetchWallstreetbetsPosts(12)
+    console.log(`[WSB] Successfully loaded ${wsbPosts.value.length} posts from frontend`)
+    if (wsbPosts.value.length > 0) {
       startWsbAutoRotate()  // Start auto-rotation after loading
     }
   } catch (err) {
-    console.error('Failed to load WSB posts:', err)
+    console.error('[WSB] Failed to load WSB posts:', err)
     wsbError.value = 'Unable to load r/wallstreetbets posts.'
   } finally {
     wsbLoading.value = false
