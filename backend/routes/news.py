@@ -23,19 +23,38 @@ async def get_wsb_posts(limit: int = 10):
     fetch_limit = limit + 5
     
     # Reddit public JSON API - no auth required for read-only access
+    # Try .json endpoint first, fallback to old.reddit.com if blocked
     url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
     
+    # More complete browser headers to avoid being blocked by Reddit
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; FXTrade/1.0; +http://fxtrade.app)"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
     }
     
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             payload = resp.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
+        # If blocked (403), try old.reddit.com as fallback
+        if exc.response.status_code == 403:
+            try:
+                old_url = f"https://old.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                    resp = await client.get(old_url, headers=headers)
+                    resp.raise_for_status()
+                    payload = resp.json()
+            except Exception:
+                raise HTTPException(403, "Reddit API blocked request. This may happen when accessing from cloud infrastructure.")
+        else:
+            raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
     except Exception as exc:
         raise HTTPException(502, f"Failed to fetch Reddit posts: {str(exc)}")
     
