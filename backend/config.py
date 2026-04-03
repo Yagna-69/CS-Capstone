@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # Gemini API key — reserved for future AI insight feature
     gemini_api_key: str = ""
     newsapi_key: str = ""
+    # Reddit OAuth (app-only) — register a "script" app at https://www.reddit.com/prefs/apps
+    # If not set, falls back to the public JSON endpoint (less reliable)
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
 
     class Config:
         env_file = str(_BACKEND_DIR / ".env")
