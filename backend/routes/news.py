@@ -10,32 +10,76 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 
+async def _get_reddit_oauth_token(client: httpx.AsyncClient) -> str:
+    """
+    Obtain a Reddit app-only OAuth token via client credentials.
+    Requires REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in settings.
+    """
+    resp = await client.post(
+        "https://www.reddit.com/api/v1/access_token",
+        data={"grant_type": "client_credentials"},
+        auth=(settings.reddit_client_id, settings.reddit_client_secret),
+        headers={"User-Agent": "script:fxtrade:v1.0"},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
 @router.get("/reddit/wsb")
 async def get_wsb_posts(limit: int = 10):
     """
     Return hot posts from r/wallstreetbets.
     Query params:
       - limit: max number of posts (default 10, max 25)
+
+    Uses Reddit OAuth app-only auth when REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET
+    are set in the environment (recommended). Falls back to the public .json
+    endpoint when credentials are absent.
     """
-    limit = max(1, min(limit, 25))  # Reddit allows up to 100, but we'll cap at 25
-    
-    # Fetch more to account for filtered stickied posts
+    limit = max(1, min(limit, 25))
+
+    # Fetch a few extra to account for filtered stickied posts
     fetch_limit = limit + 5
-    
-    # Reddit public JSON API - no auth required for read-only access
-    url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; FXTrade/1.0; +http://fxtrade.app)"
-    }
-    
+
+    use_oauth = bool(settings.reddit_client_id and settings.reddit_client_secret)
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            if use_oauth:
+                token = await _get_reddit_oauth_token(client)
+                url = f"https://oauth.reddit.com/r/wallstreetbets/hot?limit={fetch_limit}&raw_json=1"
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "script:fxtrade:v1.0",
+                }
+            else:
+                # Public JSON endpoint fallback.
+                # Reddit requires a descriptive bot user-agent — browser user-agents
+                # are blocked for server-side requests since mid-2023.
+                url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}&raw_json=1"
+                headers = {
+                    "User-Agent": "script:fxtrade:v1.0 (read-only news aggregator)"
+                }
+
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
+
+            # Guard against Reddit returning HTML (login / error page) instead of JSON
+            content_type = resp.headers.get("content-type", "")
+            if "json" not in content_type and not resp.text.lstrip().startswith("{"):
+                raise HTTPException(
+                    502,
+                    "Reddit returned a non-JSON response — the public API may be temporarily unavailable. "
+                    "Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET for reliable access."
+                )
+
             payload = resp.json()
+
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
+        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text[:200]}")
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(502, f"Failed to fetch Reddit posts: {str(exc)}")
     
