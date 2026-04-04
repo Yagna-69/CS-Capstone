@@ -37,9 +37,17 @@
               aria-live="polite"
               aria-atomic="true"
             >
-              <span class="landing-headline-ccy">{{ pairBase }}</span>
+              <span class="landing-headline-ccy-slot">
+                <Transition name="landing-ccy" mode="out-in">
+                  <span :key="pairBase" class="landing-headline-ccy">{{ pairBase }}</span>
+                </Transition>
+              </span>
               to
-              <span class="landing-headline-ccy">{{ pairQuote }}</span>
+              <span class="landing-headline-ccy-slot">
+                <Transition name="landing-ccy" mode="out-in">
+                  <span :key="pairQuote" class="landing-headline-ccy">{{ pairQuote }}</span>
+                </Transition>
+              </span>
             </span>
           </h1>
           <p class="landing-deck">
@@ -275,22 +283,22 @@ const FX_PAIR_CODES = [
   'PLN'
 ]
 
-const PAIR_SHUFFLE_MS = 1500
+/** Base and quote use separate timers (+ jitter) so they never stay phase-locked. */
+const PAIR_SHUFFLE_BASE_MS = 1800
+const PAIR_SHUFFLE_QUOTE_MS = 2300
+const PAIR_SHUFFLE_JITTER_MS = 2050
 
 const pairBase = ref('USD')
 const pairQuote = ref('AUD')
 
-function pickHeroPair() {
+function pickInitialHeroPair() {
   const codes = FX_PAIR_CODES
-  const prevB = pairBase.value
-  const prevQ = pairQuote.value
   let base
   let quote
   for (let i = 0; i < 90; i++) {
     base = codes[Math.floor(Math.random() * codes.length)]
     quote = codes[Math.floor(Math.random() * codes.length)]
     if (base === quote) continue
-    if (base === prevB && quote === prevQ) continue
     pairBase.value = base
     pairQuote.value = quote
     return
@@ -301,6 +309,40 @@ function pickHeroPair() {
   } while (base === quote)
   pairBase.value = base
   pairQuote.value = quote
+}
+
+function pickHeroBase() {
+  const codes = FX_PAIR_CODES
+  const quote = pairQuote.value
+  const prevB = pairBase.value
+  let base
+  for (let i = 0; i < 100; i++) {
+    base = codes[Math.floor(Math.random() * codes.length)]
+    if (base === quote) continue
+    if (base !== prevB || codes.length <= 2) {
+      pairBase.value = base
+      return
+    }
+  }
+  const alt = codes.filter((c) => c !== quote)
+  pairBase.value = alt[0] ?? prevB
+}
+
+function pickHeroQuote() {
+  const codes = FX_PAIR_CODES
+  const base = pairBase.value
+  const prevQ = pairQuote.value
+  let quote
+  for (let i = 0; i < 100; i++) {
+    quote = codes[Math.floor(Math.random() * codes.length)]
+    if (quote === base) continue
+    if (quote !== prevQ || codes.length <= 2) {
+      pairQuote.value = quote
+      return
+    }
+  }
+  const alt = codes.filter((c) => c !== base)
+  pairQuote.value = alt[0] ?? prevQ
 }
 
 /** 0→1 while scrolling through `animationScrollRef` only; stays 1 during hold spacer */
@@ -816,7 +858,37 @@ const SCROLL_YAW_RADIANS = Math.PI * 4.25
 let teardownScrollListeners = null
 let footerIo = null
 let lenis = null
-let pairShuffleId = null
+let pairShuffleBaseId = null
+let pairShuffleQuoteId = null
+
+function clearPairShuffleTimers() {
+  if (pairShuffleBaseId != null) {
+    clearTimeout(pairShuffleBaseId)
+    pairShuffleBaseId = null
+  }
+  if (pairShuffleQuoteId != null) {
+    clearTimeout(pairShuffleQuoteId)
+    pairShuffleQuoteId = null
+  }
+}
+
+function schedulePairBaseShuffle() {
+  const delay = PAIR_SHUFFLE_BASE_MS + Math.floor(Math.random() * PAIR_SHUFFLE_JITTER_MS)
+  pairShuffleBaseId = window.setTimeout(() => {
+    pairShuffleBaseId = null
+    pickHeroBase()
+    schedulePairBaseShuffle()
+  }, delay)
+}
+
+function schedulePairQuoteShuffle() {
+  const delay = PAIR_SHUFFLE_QUOTE_MS + Math.floor(Math.random() * PAIR_SHUFFLE_JITTER_MS)
+  pairShuffleQuoteId = window.setTimeout(() => {
+    pairShuffleQuoteId = null
+    pickHeroQuote()
+    schedulePairQuoteShuffle()
+  }, delay)
+}
 let showcaseIo = null
 let showcaseKickerIo = null
 let preferReducedMotionLanding = false
@@ -930,8 +1002,9 @@ onMounted(async () => {
     footerIo.observe(bottomBrandSection.value)
   }
 
-  pickHeroPair()
-  pairShuffleId = window.setInterval(pickHeroPair, PAIR_SHUFFLE_MS)
+  pickInitialHeroPair()
+  schedulePairBaseShuffle()
+  schedulePairQuoteShuffle()
 
   await nextTick()
   const showcaseRoot = showcaseSectionRef.value
@@ -970,10 +1043,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cancelAnimationFrame(raf)
-  if (pairShuffleId != null) {
-    clearInterval(pairShuffleId)
-    pairShuffleId = null
-  }
+  clearPairShuffleTimers()
   lenis?.destroy()
   lenis = null
   teardownScrollListeners?.()
@@ -1790,15 +1860,61 @@ onUnmounted(() => {
   min-height: 1.06em;
 }
 
+.landing-headline-ccy-slot {
+  display: inline-block;
+  vertical-align: baseline;
+  width: 3.55ch;
+  margin: 0 0.06em;
+  text-align: center;
+}
+
 .landing-headline-ccy {
   display: inline-block;
   box-sizing: border-box;
-  width: 3.55ch;
-  margin: 0 0.06em;
+  width: 100%;
   text-align: center;
   font: inherit;
   letter-spacing: inherit;
   vertical-align: baseline;
+}
+
+.landing-ccy-enter-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing-ccy-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.landing-ccy-enter-from {
+  opacity: 0;
+  transform: translateY(0.38em);
+}
+
+.landing-ccy-leave-to {
+  opacity: 0;
+}
+
+.landing-ccy-enter-to,
+.landing-ccy-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-ccy-enter-active,
+  .landing-ccy-leave-active {
+    transition-duration: 0.001ms !important;
+  }
+
+  .landing-ccy-enter-from,
+  .landing-ccy-leave-to,
+  .landing-ccy-enter-to,
+  .landing-ccy-leave-from {
+    transform: none;
+  }
 }
 
 .landing-deck {
