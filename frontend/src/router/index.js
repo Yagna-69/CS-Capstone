@@ -5,7 +5,6 @@ import DashboardView from '../views/DashboardView.vue'
 import TradingView from '../views/TradingView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import LLMView from '../views/LLMView.vue'
-import HomeView from '../views/HomeView.vue'
 import NewsView from '../views/NewsView.vue'
 
 const router = createRouter({
@@ -40,11 +39,6 @@ const router = createRouter({
       path: '/ai',
       name: 'llm',
       component: LLMView
-    },
-    {
-      path: '/demo',
-      name: 'home',
-      component: HomeView
     },
     {
       path: '/news',
