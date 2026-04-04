@@ -11,6 +11,7 @@ const authStore = useAuthStore()
 const forexStore = useForexStore()
 const portfolioStore = usePortfolioStore()
 const isLoginPage = computed(() => route.path === '/login')
+const isLandingPage = computed(() => route.name === 'landing')
 const searchQuery = ref('')
 const searchFocused = ref(false)
 const showSearchDropdown = ref(false)
@@ -414,7 +415,14 @@ onUnmounted(() => {
       </nav>
     </header>
     
-    <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+    <main
+      class="flex-1 w-full"
+      :class="
+        isLandingPage
+          ? 'min-h-0 flex flex-col overflow-visible'
+          : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6'
+      "
+    >
       <RouterView />
     </main>
   </div>
@@ -513,7 +521,7 @@ onUnmounted(() => {
 .ticker-scroll {
   display: flex;
   gap: 2rem;
-  animation: scroll-curve 40s linear infinite;
+  animation: scroll-curve 70s linear infinite;
   transform-style: preserve-3d;
   will-change: transform;
 }
@@ -528,7 +536,7 @@ onUnmounted(() => {
   font-size: 0.875rem;
   flex-shrink: 0;
   transform-style: preserve-3d;
-  animation: curve-perspective 40s linear infinite;
+  animation: curve-perspective 70s linear infinite;
 }
 
 /* 3D Curve Animation */
