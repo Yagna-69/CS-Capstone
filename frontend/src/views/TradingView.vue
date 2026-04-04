@@ -156,49 +156,20 @@
         <div class="glass p-4 rounded-xl flex flex-col h-full">
           <h3 class="text-sm font-bold text-white mb-3">Exchange Currency</h3>
 
-          <!-- Order Type & Buy/Sell Row -->
+          <!-- Order Type Row -->
           <div class="mb-4">
             <label class="text-xs text-gray-400 mb-1.5 block font-medium">Order Type</label>
-            <div class="flex gap-2">
-              <!-- Order Type Selector -->
-              <div class="relative flex-1">
-                <select v-model="orderType"
-                  class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
-                  <option value="Market">Market Order</option>
-                  <option value="Limit">Limit Order</option>
-                  <option value="Stop">Stop Order</option>
-                  <option value="Stop-Limit">Stop-Limit Order</option>
-                </select>
-                <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-              
-              <!-- Buy/Sell Toggle -->
-              <div class="flex rounded-lg border-2 border-gray-700 overflow-hidden">
-                <button
-                  @click="orderSide = 'buy'"
-                  :class="[
-                    'px-4 py-2.5 text-sm font-bold transition-all',
-                    orderSide === 'buy' 
-                      ? 'bg-green-600 text-white' 
-                      : 'bg-bg-primary text-gray-400 hover:text-white'
-                  ]"
-                >
-                  Buy
-                </button>
-                <button
-                  @click="orderSide = 'sell'"
-                  :class="[
-                    'px-4 py-2.5 text-sm font-bold transition-all',
-                    orderSide === 'sell' 
-                      ? 'bg-red-600 text-white' 
-                      : 'bg-bg-primary text-gray-400 hover:text-white'
-                  ]"
-                >
-                  Sell
-                </button>
-              </div>
+            <div class="relative">
+              <select v-model="orderType"
+                class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
+                <option value="Market">Market Order</option>
+                <option value="Limit">Limit Order</option>
+                <option value="Stop">Stop Order</option>
+                <option value="Stop-Limit">Stop-Limit Order</option>
+              </select>
+              <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
             <p class="text-xs text-gray-500 mt-1.5 italic">
               {{ orderType === 'Market' ? 'Execute immediately at current price' : 
@@ -217,10 +188,16 @@
                 <span class="text-white text-sm font-bold">{{ fromCurrency }}</span>
               </div>
               
-              <!-- Arrow Icon -->
-              <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+              <!-- Swap Direction Button -->
+              <button
+                @click="swapPairDirection"
+                class="p-2 rounded-lg border-2 border-gray-700 bg-bg-primary hover:border-primary hover:bg-primary/10 transition-all group"
+                title="Swap to inverse pair"
+              >
+                <svg class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+              </button>
               
               <!-- To Currency (Display Only) -->
               <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
@@ -516,47 +493,20 @@
         <div class="flex-1 overflow-y-auto p-4">
           <!-- Exchange Tab -->
           <div v-if="activeTab === 'exchange'" class="space-y-4">
-            <!-- Order Type & Buy/Sell Row -->
+            <!-- Order Type Row (Mobile) -->
             <div>
               <label class="text-xs text-gray-400 mb-1.5 block font-medium">Order Type</label>
-              <div class="flex flex-col gap-2">
-                <div class="relative">
-                  <select v-model="orderType"
-                    class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
-                    <option value="Market">Market Order</option>
-                    <option value="Limit">Limit Order</option>
-                    <option value="Stop">Stop Order</option>
-                    <option value="Stop-Limit">Stop-Limit Order</option>
-                  </select>
-                  <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                
-                <div class="flex rounded-lg border-2 border-gray-700 overflow-hidden">
-                  <button
-                    @click="orderSide = 'buy'"
-                    :class="[
-                      'flex-1 py-2.5 text-sm font-bold transition-all',
-                      orderSide === 'buy' 
-                        ? 'bg-green-600 text-white' 
-                        : 'bg-bg-primary text-gray-400 hover:text-white'
-                    ]"
-                  >
-                    Buy
-                  </button>
-                  <button
-                    @click="orderSide = 'sell'"
-                    :class="[
-                      'flex-1 py-2.5 text-sm font-bold transition-all',
-                      orderSide === 'sell' 
-                        ? 'bg-red-600 text-white' 
-                        : 'bg-bg-primary text-gray-400 hover:text-white'
-                    ]"
-                  >
-                    Sell
-                  </button>
-                </div>
+              <div class="relative">
+                <select v-model="orderType"
+                  class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
+                  <option value="Market">Market Order</option>
+                  <option value="Limit">Limit Order</option>
+                  <option value="Stop">Stop Order</option>
+                  <option value="Stop-Limit">Stop-Limit Order</option>
+                </select>
+                <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
               </div>
               <p class="text-xs text-gray-500 mt-1.5 italic">
                 {{ orderType === 'Market' ? 'Execute immediately at current price' : 
@@ -573,9 +523,15 @@
                 <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
                   <span class="text-white text-sm font-bold">{{ fromCurrency }}</span>
                 </div>
-                <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
+                <button
+                  @click="swapPairDirection"
+                  class="p-2 rounded-lg border-2 border-gray-700 bg-bg-primary hover:border-primary hover:bg-primary/10 transition-all group"
+                  title="Swap to inverse pair"
+                >
+                  <svg class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                </button>
                 <div class="flex-1 px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg">
                   <span class="text-white text-sm font-bold">{{ toCurrency }}</span>
                 </div>
@@ -633,15 +589,9 @@
             <button
               @click="executeTrade"
               :disabled="tradeLoading || !currentRate || !exchangeAmount"
-              :class="[
-                'w-full py-3 rounded-lg font-bold text-white transition-all shadow-lg',
-                orderSide === 'buy'
-                  ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 shadow-green-600/30'
-                  : 'bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 shadow-red-600/30',
-                (tradeLoading || !currentRate || !exchangeAmount) && 'opacity-50 cursor-not-allowed'
-              ]"
+              class="w-full py-3 rounded-lg bg-primary text-black font-bold transition-all shadow-lg hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {{ tradeLoading ? 'Processing...' : `Execute ${orderSide === 'buy' ? 'Buy' : 'Sell'} Order` }}
+              {{ tradeLoading ? 'Processing...' : 'Execute Trade' }}
             </button>
           </div>
 
@@ -670,7 +620,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { tradeApi } from '@/services/api'
 import { usePortfolioStore } from '@/stores/portfolio'
 import { useForexStore } from '@/stores/forex'
@@ -678,6 +628,7 @@ import { useNewsStore } from '@/stores/news'
 import { createChart } from 'lightweight-charts'
 
 const route = useRoute()
+const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
 const newsStore = useNewsStore()
@@ -1324,7 +1275,6 @@ const activeTab = ref('exchange')
 
 // ── Exchange form ─────────────────────────────────────────────────────────
 const orderType = ref('Market')
-const orderSide = ref('buy')
 const fromCurrency   = ref('USD')
 const toCurrency     = ref('AUD')
 const exchangeAmount = ref(null)
@@ -1388,8 +1338,8 @@ function syncCurrenciesFromChart() {
   fetchRate()
 }
 
-const CHART_REFRESH_INTERVAL_MS = 5_000  // Reload chart OHLC every 5s (configurable)
-const RATE_REFRESH_INTERVAL_MS = 5_000   // Re-fetch exchange rate every 5s (configurable)
+const CHART_REFRESH_INTERVAL_MS = 4_000  // Reload chart OHLC every 5s (configurable)
+const RATE_REFRESH_INTERVAL_MS = 4_000   // Re-fetch exchange rate every 5s (configurable)
 
 let chartRefreshTimer = null
 let rateRefreshTimer = null
@@ -1435,6 +1385,11 @@ function computeReceive() {
   receiveAmount.value = (currentRate.value && exchangeAmount.value > 0)
     ? exchangeAmount.value * currentRate.value
     : null
+}
+
+// Swap pair direction and navigate to inverse pair
+function swapPairDirection() {
+  router.push(`/trading?pair=${toCurrency.value}/${fromCurrency.value}`)
 }
 
 async function executeTrade() {

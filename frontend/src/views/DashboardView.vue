@@ -751,7 +751,7 @@ const holdingsDonutOptions = {
   cutout: '65%'
 }
 
-const PORTFOLIO_REFRESH_INTERVAL_MS = 5_000  // Re-fetch holdings/history every 5s (configurable)
+const PORTFOLIO_REFRESH_INTERVAL_MS = 4_000  // Re-fetch holdings/history every 4s (configurable)
 let portfolioRefreshTimer = null
 
 onMounted(() => {

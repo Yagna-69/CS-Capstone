@@ -98,7 +98,7 @@ const WATCH_PAIRS = [
   { pair: 'USD/CAD', description: 'US Dollar / Canadian Dollar' }
 ]
 
-const WATCHLIST_REFRESH_INTERVAL_MS = 5_000  // Reload watchlist prices every 5s (configurable)
+const WATCHLIST_REFRESH_INTERVAL_MS = 4_000  // Reload watchlist prices every 4s (configurable)
 
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()

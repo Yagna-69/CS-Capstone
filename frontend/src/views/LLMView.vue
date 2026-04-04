@@ -2,13 +2,29 @@
   <div class="llm-layout">
     <!-- Left Sidebar: Context Widgets (30%) -->
     <div class="left-sidebar flex flex-col overflow-hidden">
-      <!-- Top: Portfolio Chart Widget (Large) -->
-      <div class="portfolio-widget-large glass-inner rounded-lg m-4 p-4 flex-shrink-0">
+      <!-- Top: Portfolio Chart Widget (Collapsible) -->
+      <div 
+        :class="['portfolio-widget glass-inner rounded-lg m-4 p-4 flex-shrink-0', { expanded: showPortfolioChart }]"
+      >
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-bold text-white">Portfolio Performance</h3>
-          <span class="text-xs text-gray-500">{{ selectedPortfolioPeriod }}</span>
+          <!-- Toggle Switch -->
+          <button
+            @click="showPortfolioChart = !showPortfolioChart"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
+              showPortfolioChart ? 'bg-primary' : 'bg-gray-700'
+            ]"
+          >
+            <span
+              :class="[
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                showPortfolioChart ? 'translate-x-6' : 'translate-x-1'
+              ]"
+            />
+          </button>
         </div>
-        <div class="h-48 flex items-center justify-center">
+        <div v-if="showPortfolioChart" class="h-48 flex items-center justify-center">
           <Line
             v-if="portfolioChartData"
             :data="portfolioChartData"
@@ -93,15 +109,12 @@
           ]"
         >
           <div class="flex items-center justify-between mb-2">
-            <div class="flex-1">
-              <p 
-                class="font-bold text-sm"
-                :class="widget.change >= 0 ? 'text-green-400' : 'text-red-400'"
-              >
-                {{ widget.pair }}
-              </p>
-              <p class="text-xs text-gray-500">{{ widget.pair.split('/')[0] }} to {{ widget.pair.split('/')[1] }}</p>
-            </div>
+            <p 
+              class="font-bold text-sm"
+              :class="widget.change >= 0 ? 'text-green-400' : 'text-red-400'"
+            >
+              {{ widget.pair }}
+            </p>
             <button
               @click.stop="removeWidget(widget.pair)"
               class="p-1 hover:bg-red-500/20 rounded transition"
@@ -151,9 +164,7 @@
       <div class="flex items-center justify-between p-4 flex-shrink-0">
         <div>
           <h1 class="text-xl font-bold text-white font-goldman">ExLLM Assistant</h1>
-          <p class="text-xs text-gray-500">
-            {{ selectedWidget ? `Context: ${selectedWidget}` : 'AI-powered forex trading assistant' }}
-          </p>
+          <p class="text-xs text-gray-500">AI-powered forex trading assistant</p>
         </div>
         <div class="flex items-center gap-3">
           <button
@@ -258,21 +269,23 @@
         </div>
 
         <!-- Message bubbles -->
-        <div
-          v-for="(msg, i) in store.messages"
-          :key="i"
-          :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
-        >
-          <!-- AI message -->
-          <div v-if="msg.role === 'assistant'" class="max-w-[85%]">
-            <div class="glass-inner rounded-2xl rounded-tl-md px-4 py-3 text-gray-200 prose prose-invert prose-sm" v-html="renderAssistantMarkdown(msg.content)"></div>
-          </div>
+        <transition-group name="message">
+          <div
+            v-for="(msg, i) in store.messages"
+            :key="i"
+            :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
+          >
+            <!-- AI message -->
+            <div v-if="msg.role === 'assistant'" class="max-w-[85%]">
+              <div class="glass-inner rounded-2xl rounded-tl-md px-4 py-3 text-gray-200 prose prose-invert prose-sm" v-html="renderAssistantMarkdown(msg.content)"></div>
+            </div>
 
-          <!-- User bubble -->
-          <div v-else class="max-w-[85%]">
-            <div class="bg-primary text-black rounded-2xl rounded-br-md px-4 py-3 whitespace-pre-wrap">{{ msg.content }}</div>
+            <!-- User bubble (strip context prefix) -->
+            <div v-else class="max-w-[85%]">
+              <div class="bg-primary text-black rounded-2xl rounded-br-md px-4 py-3 whitespace-pre-wrap">{{ stripContextPrefix(msg.content) }}</div>
+            </div>
           </div>
-        </div>
+        </transition-group>
 
         <!-- Typing indicator -->
         <div v-if="store.loading" class="flex justify-start">
@@ -291,6 +304,18 @@
 
       <!-- Input Bar -->
       <div class="p-4 flex-shrink-0">
+        <!-- Active Context Tags -->
+        <div v-if="contextWidgets.length > 0" class="mb-3 flex flex-wrap gap-2">
+          <span class="text-xs text-gray-400">Context:</span>
+          <span
+            v-for="widget in contextWidgets"
+            :key="widget.pair"
+            class="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 border border-primary/30 rounded-full text-xs text-primary"
+          >
+            {{ widget.pair }}
+          </span>
+        </div>
+        
         <div class="flex gap-3">
           <input
             v-model="input"
@@ -372,6 +397,7 @@ const showOnlyTradeable = ref(false)
 const selectedWidget = ref(null)
 const contextWidgets = ref([])  // [{ pair, price, change, miniPath }]
 const selectedPortfolioPeriod = ref('1M')
+const showPortfolioChart = ref(false)  // Collapsed by default to save space
 
 // Search results for currency pairs
 const searchResults = computed(() => {
@@ -608,13 +634,26 @@ function renderAssistantMarkdown(text) {
   return md.render(text || '')
 }
 
+// Strip [Context: ...] prefix from user messages for display
+function stripContextPrefix(content) {
+  return content.replace(/^\[Context:[^\]]+\]\s*/, '')
+}
+
 function send(text) {
   const msg = text || input.value.trim()
   if (!msg || store.loading) return
   input.value = ''
   
-  // TODO: In future, include selectedWidget and contextWidgets in message context
-  store.sendMessage(msg)
+  // Build context from selected currency widgets (as tags)
+  let contextPrefix = ''
+  if (contextWidgets.value.length > 0) {
+    const pairs = contextWidgets.value.map(w => w.pair).join(', ')
+    contextPrefix = `[Context: ${pairs}] `
+  }
+  
+  // Prepend context to message for better LLM understanding
+  const messageWithContext = contextPrefix + msg
+  store.sendMessage(messageWithContext)
 }
 
 // Auto-scroll on new messages or when loading changes
@@ -680,7 +719,12 @@ watch(
   overflow: hidden;
 }
 
-.portfolio-widget-large {
+.portfolio-widget {
+  min-height: 80px;
+  transition: min-height 0.3s ease;
+}
+
+.portfolio-widget.expanded {
   min-height: 280px;
 }
 
@@ -771,5 +815,25 @@ watch(
 .prose pre code {
   background: none;
   padding: 0;
+}
+
+/* Message slide-in fade transitions */
+.message-move,
+.message-enter-active {
+  transition: all 0.4s ease;
+}
+
+.message-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.message-leave-active {
+  transition: all 0.3s ease;
+}
+
+.message-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 </style>

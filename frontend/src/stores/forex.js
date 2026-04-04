@@ -9,7 +9,7 @@ import { forexApi } from '@/services/api'
  */
 export const useForexStore = defineStore('forex', () => {
   // Configuration
-  const REFRESH_INTERVAL_MS = 5_000  // Poll interval (configurable)
+  const REFRESH_INTERVAL_MS = 4_000  // Poll interval (configurable)
   
   // State
   const currencies = ref([])          // [{ code, name }, ...]
