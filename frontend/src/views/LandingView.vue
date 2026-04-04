@@ -59,7 +59,89 @@
       class="landing-scroll-spacer landing-scroll-spacer--anim"
       aria-hidden="true"
     />
-    <div class="landing-scroll-spacer landing-scroll-spacer--hold" aria-hidden="true" />
+    <!-- Extra scroll at scrollProgress=1 so globe/blackout finish before showcase (z-7) enters view -->
+    <div class="landing-scroll-spacer landing-scroll-spacer--globe-settle" aria-hidden="true" />
+
+    <section
+      ref="dashboardRevealRef"
+      class="landing-dashboard-reveal"
+      aria-label="Dashboard preview"
+    >
+      <!-- In-flow height only; card is position:fixed and stays visually centered until exit phase -->
+      <div class="landing-dashboard-reveal-rail" aria-hidden="true" />
+      <div class="landing-dashboard-reveal-stage" :style="dashboardStageStyle">
+        <div class="landing-dashboard-reveal-stack">
+          <h2 class="landing-dashboard-reveal-title" :style="dashboardTitleStyle">Welcome to the Trade Floor</h2>
+          <div class="landing-dashboard-reveal-card" :style="dashboardCardShellStyle">
+            <div class="landing-dashboard-reveal-clip" :style="dashboardCardClipStyle">
+              <img
+                src="/showcase-dashboard-reveal.png"
+                alt="FXTrade dashboard with portfolio value, watchlist, and holdings"
+                class="landing-dashboard-reveal-img"
+                :style="dashboardImgStyle"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      ref="showcaseSectionRef"
+      class="landing-showcase"
+      aria-label="FXTrade product previews"
+    >
+      <div class="landing-showcase-inner">
+        <p class="landing-showcase-kicker">Inside the platform</p>
+        <div class="landing-showcase-rows">
+          <article
+            v-for="(card, idx) in SHOWCASE_CARDS"
+            :key="card.src"
+            class="landing-showcase-row"
+            :style="{ '--reveal-delay': `${idx * 0.11}s` }"
+            :class="
+              card.imageOnRight
+                ? 'landing-showcase-row--img-right'
+                : 'landing-showcase-row--img-left'
+            "
+          >
+            <div class="landing-showcase-copy">
+              <h3 class="landing-showcase-title">{{ card.title }}</h3>
+              <p v-if="card.subline" class="landing-showcase-subline">{{ card.subline }}</p>
+              <p class="landing-showcase-body">{{ card.body }}</p>
+            </div>
+            <div class="landing-showcase-figure">
+              <div class="landing-showcase-imgcrop">
+                <img
+                  :src="card.src"
+                  :alt="card.imageAlt"
+                  class="landing-showcase-shot"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-skyline" aria-label="City skyline">
+      <div class="landing-skyline-frame">
+        <img
+          class="landing-skyline-img"
+          src="/landing-skyline-nyc.png"
+          alt=""
+          width="1024"
+          height="611"
+          loading="lazy"
+          decoding="async"
+        />
+        <div class="landing-skyline-vignette landing-skyline-vignette--top" aria-hidden="true" />
+      </div>
+    </section>
 
     <footer
       ref="bottomBrandSection"
@@ -131,6 +213,8 @@ const globeCanvas = ref(null)
 const globeHost = ref(null)
 const animationScrollRef = ref(null)
 const bottomBrandSection = ref(null)
+const showcaseSectionRef = ref(null)
+const dashboardRevealRef = ref(null)
 const footerVisible = ref(false)
 
 /** Hide fixed hero when the yellow footer is in view (no stacked UI). */
@@ -138,6 +222,34 @@ const heroSuppressed = computed(() => footerVisible.value)
 
 /** Repeats per marquee half (two halves loop seamlessly). */
 const MARQUEE_REPEATS = 42
+
+/** Product rows in the black band: imageOnRight = copy left / image right. */
+const SHOWCASE_CARDS = [
+  {
+    imageOnRight: true,
+    src: '/showcase-llm.png',
+    imageAlt: 'FXTrade ExLLM assistant chat with market analysis',
+    title: 'ExLLM Assistant',
+    subline: 'Context-aware answers',
+    body: 'Ask for outlook, pair context, and risk ideas—answers sit next to live USD/JPY and GBP/USD tags.'
+  },
+  {
+    imageOnRight: false,
+    src: '/showcase-trade.png',
+    imageAlt: 'FXTrade trading view with USD/JPY chart and exchange order form',
+    title: 'Trade & execution',
+    subline: 'Chart meets order ticket',
+    body: 'Live candlesticks, indicators, and a market order panel—rate, spread, and what you receive in one place.'
+  },
+  {
+    imageOnRight: true,
+    src: '/showcase-news.png',
+    imageAlt: 'FXTrade Curated News grid with headlines and imagery',
+    title: 'Curated news',
+    subline: 'Macro, priced in',
+    body: 'A responsive story grid with featured coverage and related headlines so context stays next to your book.'
+  }
+]
 
 /** ISO-style 3-letter codes for hero pair subline (e.g. AUD to USD). */
 const FX_PAIR_CODES = [
@@ -211,6 +323,133 @@ const heroFocalScrollOpacity = computed(() => {
   if (p <= a) return 1
   if (p >= b) return 0
   return 1 - (p - a) / (b - a)
+})
+
+/** 0→1 while scrolling through `dashboardRevealRef` (dashboard hero card). */
+const dashboardRevealProgress = ref(0)
+/** Fixed stage visible while scrolling the dashboard rail */
+const dashboardStageOn = ref(false)
+/** 0 = centered / full; 1 = trailed off (last portion of rail scroll) */
+const dashboardExitProgress = ref(0)
+
+function smoothstep01(x) {
+  const t = Math.max(0, Math.min(1, x))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * Share of scroll (from animation start → section end) spent at full expansion (p=1).
+ * Fraction of section span, not vh—avoids a tiny reveal range when section ≈ 1.3× viewport.
+ */
+const DASHBOARD_HOLD_SCROLL_SHARE = 0.5
+/** Last share of [enterY → sectionEndY] used to translate/fade the fixed stage (trail off) */
+const DASHBOARD_EXIT_SCROLL_SHARE = 0.26
+
+function readDashboardRevealProgress() {
+  const zone = dashboardRevealRef.value
+  const y = lenis != null ? lenis.scroll : window.scrollY
+  const vh = window.innerHeight
+
+  if (!zone) {
+    dashboardStageOn.value = false
+    dashboardExitProgress.value = 0
+    if (!preferReducedMotionLanding) dashboardRevealProgress.value = 0
+    return
+  }
+
+  const rect = zone.getBoundingClientRect()
+  const topDoc = y + rect.top
+  const h = zone.offsetHeight
+  const sectionEndY = topDoc + h - vh
+  const enterY = topDoc - vh * 0.38
+  const activeSpan = Math.max(vh * 0.4, sectionEndY - enterY)
+  const exitStartY = sectionEndY - activeSpan * DASHBOARD_EXIT_SCROLL_SHARE
+
+  if (preferReducedMotionLanding) {
+    dashboardRevealProgress.value = 1
+    dashboardStageOn.value = y >= enterY - vh * 0.15 && y <= sectionEndY + vh * 0.08
+    dashboardExitProgress.value = 0
+    return
+  }
+
+  /**
+   * p: clip reveal 0→1 with hold, same span as before (revealEnd before exit tail).
+   */
+  const start = topDoc - vh * 0.42
+  const totalSpan = Math.max(vh * 0.35, sectionEndY - start)
+  const revealEndY = start + totalSpan * (1 - DASHBOARD_HOLD_SCROLL_SHARE)
+  const range = Math.max(1, revealEndY - start)
+  const raw = (y - start) / range
+  const boosted = Math.min(1, raw * 1.08)
+  dashboardRevealProgress.value = Math.max(0, Math.min(1, boosted))
+
+  dashboardStageOn.value = y >= enterY && y <= sectionEndY + vh * 0.04
+  if (!dashboardStageOn.value) {
+    dashboardExitProgress.value = 0
+    return
+  }
+  if (y <= exitStartY) {
+    dashboardExitProgress.value = 0
+  } else {
+    const er = (y - exitStartY) / Math.max(1, sectionEndY - exitStartY)
+    dashboardExitProgress.value = Math.max(0, Math.min(1, er))
+  }
+}
+
+const dashboardStageStyle = computed(() => {
+  if (!dashboardStageOn.value) {
+    return {
+      visibility: 'hidden',
+      opacity: '0',
+      pointerEvents: 'none',
+      transform: 'translateY(0) scale(1)'
+    }
+  }
+  const e = smoothstep01(dashboardExitProgress.value)
+  return {
+    visibility: 'visible',
+    opacity: String(1 - e * 0.88),
+    pointerEvents: 'none',
+    transform: `translateY(${-e * 18}vh) scale(${1 - e * 0.05})`
+  }
+})
+
+const dashboardRevealEased = computed(() => smoothstep01(dashboardRevealProgress.value))
+
+const dashboardTitleStyle = computed(() => {
+  const t = dashboardRevealEased.value
+  return {
+    opacity: String(Math.min(1, t * 1.2)),
+    transform: `translateY(${(1 - Math.min(1, t * 1.15)) * 0.5}rem)`
+  }
+})
+
+const dashboardCardShellStyle = computed(() => {
+  const t = dashboardRevealEased.value
+  return {
+    opacity: String(0.12 + t * 0.88),
+    transform: `scale(${0.94 + t * 0.06})`
+  }
+})
+
+const dashboardCardClipStyle = computed(() => {
+  const t = dashboardRevealEased.value
+  /* Let the image use its full natural height once open (no vh cap crop) */
+  if (t >= 0.998) {
+    return { maxHeight: 'none' }
+  }
+  const capVh = 240
+  const mh = 4 + t * capVh
+  return {
+    maxHeight: `${mh}vh`
+  }
+})
+
+const dashboardImgStyle = computed(() => {
+  const t = dashboardRevealEased.value
+  return {
+    transform: `translateY(${(1 - t) * 14}%)`
+  }
 })
 
 /**
@@ -578,6 +817,9 @@ let teardownScrollListeners = null
 let footerIo = null
 let lenis = null
 let pairShuffleId = null
+let showcaseIo = null
+let showcaseKickerIo = null
+let preferReducedMotionLanding = false
 
 function globeYawForDraw() {
   return angleY + scrollProgress.value * SCROLL_YAW_RADIANS
@@ -620,6 +862,9 @@ onMounted(async () => {
   readScrollProgress()
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  preferReducedMotionLanding = reduceMotion
+  readDashboardRevealProgress()
+
   let onScroll = null
   if (!reduceMotion) {
     lenis = new Lenis({
@@ -629,20 +874,32 @@ onMounted(async () => {
       autoRaf: false,
       anchors: true
     })
-    lenis.on('scroll', readScrollProgress)
+    lenis.on('scroll', () => {
+      readScrollProgress()
+      readDashboardRevealProgress()
+    })
     readScrollProgress()
+    readDashboardRevealProgress()
   } else {
-    onScroll = () => readScrollProgress()
+    onScroll = () => {
+      readScrollProgress()
+      readDashboardRevealProgress()
+    }
     window.addEventListener('scroll', onScroll, { passive: true })
   }
-  window.addEventListener('resize', readScrollProgress, { passive: true })
+  const onLandingResize = () => {
+    readScrollProgress()
+    readDashboardRevealProgress()
+  }
+  window.addEventListener('resize', onLandingResize, { passive: true })
   teardownScrollListeners = () => {
     if (onScroll) window.removeEventListener('scroll', onScroll)
-    window.removeEventListener('resize', readScrollProgress)
+    window.removeEventListener('resize', onLandingResize)
   }
 
   globeRo = new ResizeObserver(() => {
     readScrollProgress()
+    readDashboardRevealProgress()
     drawWireframeGlobe(
       globeCanvas.value,
       globeYawForDraw(),
@@ -656,6 +913,9 @@ onMounted(async () => {
   }
   if (animationScrollRef.value) {
     globeRo.observe(animationScrollRef.value)
+  }
+  if (dashboardRevealRef.value) {
+    globeRo.observe(dashboardRevealRef.value)
   }
 
   footerIo = new IntersectionObserver(
@@ -673,6 +933,38 @@ onMounted(async () => {
   pickHeroPair()
   pairShuffleId = window.setInterval(pickHeroPair, PAIR_SHUFFLE_MS)
 
+  await nextTick()
+  const showcaseRoot = showcaseSectionRef.value
+  if (showcaseRoot) {
+    const rows = showcaseRoot.querySelectorAll('.landing-showcase-row')
+    const kicker = showcaseRoot.querySelector('.landing-showcase-kicker')
+    if (reduceMotion) {
+      rows.forEach((el) => el.classList.add('landing-showcase-row--visible'))
+      kicker?.classList.add('landing-showcase-kicker--visible')
+    } else {
+      showcaseIo = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) e.target.classList.add('landing-showcase-row--visible')
+          }
+        },
+        { root: null, rootMargin: '0px 0px -5% 0px', threshold: 0.06 }
+      )
+      rows.forEach((el) => showcaseIo.observe(el))
+      if (kicker) {
+        showcaseKickerIo = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (e.isIntersecting) e.target.classList.add('landing-showcase-kicker--visible')
+            }
+          },
+          { root: null, rootMargin: '0px 0px 0px 0px', threshold: 0.15 }
+        )
+        showcaseKickerIo.observe(kicker)
+      }
+    }
+  }
+
   raf = requestAnimationFrame(globeFrame)
 })
 
@@ -687,6 +979,10 @@ onUnmounted(() => {
   teardownScrollListeners?.()
   footerIo?.disconnect()
   globeRo?.disconnect()
+  showcaseIo?.disconnect()
+  showcaseIo = null
+  showcaseKickerIo?.disconnect()
+  showcaseKickerIo = null
 })
 </script>
 
@@ -711,9 +1007,389 @@ onUnmounted(() => {
   height: 265vh;
 }
 
-/* Extra scroll after animation finishes (scrollProgress stays 1); lengthens “black” before footer */
-.landing-scroll-spacer--hold {
-  height: 220vh;
+/* scrollProgress stays at 1 here; delays high-z showcase until globe/blackout read “done” */
+.landing-scroll-spacer--globe-settle {
+  flex-shrink: 0;
+  pointer-events: none;
+  height: clamp(72vh, 88vh, 920px);
+}
+
+/*
+ * Dashboard: in-flow rail sets scroll distance; fixed stage flex-centers card in the
+ * viewport band below the header, then exit progress drags it up/fades before showcase.
+ */
+.landing-dashboard-reveal {
+  position: relative;
+  z-index: 6;
+  background: #000000;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.landing-dashboard-reveal-rail {
+  min-height: 158vh;
+  pointer-events: none;
+}
+
+.landing-dashboard-reveal-stage {
+  --dash-sticky-top: max(4.75rem, 7.5vh);
+  position: fixed;
+  top: var(--dash-sticky-top);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.35rem, 1.25vh, 0.75rem) clamp(1rem, 4vw, 2rem);
+  box-sizing: border-box;
+  will-change: opacity, transform;
+}
+
+.landing-dashboard-reveal-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.45rem, 1.35vh, 0.95rem);
+  width: 100%;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.landing-dashboard-reveal-title {
+  margin: 0;
+  padding: 0 0.5rem;
+  text-align: center;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  font-size: clamp(2rem, 5.5vw, 3.65rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: #f5f0e6;
+  text-shadow: 0 0 40px rgba(255, 215, 0, 0.1), 0 2px 20px rgba(0, 0, 0, 0.45);
+  will-change: opacity, transform;
+}
+
+.landing-dashboard-reveal-card {
+  width: min(82vw, 72rem);
+  max-width: 100%;
+  height: auto;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0a0a0a;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 0, 0.22),
+    0 24px 80px rgba(0, 0, 0, 0.65);
+  transform-origin: center center;
+  will-change: opacity, transform;
+}
+
+.landing-dashboard-reveal-clip {
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+  border-radius: inherit;
+  will-change: max-height;
+}
+
+.landing-dashboard-reveal-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  object-position: top center;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-dashboard-reveal-title,
+  .landing-dashboard-reveal-stack,
+  .landing-dashboard-reveal-card,
+  .landing-dashboard-reveal-clip,
+  .landing-dashboard-reveal-img {
+    will-change: auto;
+  }
+}
+
+/* Black-band product rows: ~70/30 image + copy, alternating L/R */
+.landing-showcase {
+  position: relative;
+  z-index: 7;
+  min-height: 220vh;
+  background: #000000;
+  margin-top: clamp(-20vh, -17rem, -9rem);
+  padding: clamp(0.65rem, 1.75vh, 1.35rem) clamp(1.25rem, 5vw, 3rem) clamp(4rem, 14vh, 8rem);
+  box-sizing: border-box;
+}
+
+.landing-showcase-inner {
+  width: 100%;
+  max-width: 90rem;
+  margin: 0 auto;
+}
+
+.landing-showcase-kicker {
+  margin: 0 0 clamp(1.75rem, 4.5vw, 3rem);
+  text-align: center;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: clamp(0.68rem, 1.35vw, 0.78rem);
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 215, 0, 0.45);
+  opacity: 0;
+  transform: translateY(1.25rem);
+  transition:
+    opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing-showcase-kicker--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.landing-showcase-rows {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3.5rem, 12vh, 7rem);
+}
+
+.landing-showcase-row {
+  display: grid;
+  gap: clamp(1.75rem, 5vw, 3.25rem);
+  align-items: start;
+  opacity: 0;
+  transform: translateY(2rem);
+  transition:
+    opacity 0.95s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0s),
+    transform 0.95s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0s);
+}
+
+.landing-showcase-row--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Areas avoid DOM-order vs column bugs (e.g. img-left with copy first in markup) */
+.landing-showcase-row--img-right {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+  grid-template-areas: 'copy figure';
+}
+
+.landing-showcase-row--img-right .landing-showcase-copy {
+  grid-area: copy;
+  min-width: 0;
+}
+
+.landing-showcase-row--img-right .landing-showcase-figure {
+  grid-area: figure;
+  width: 100%;
+  min-width: 0;
+  align-self: start;
+}
+
+.landing-showcase-row--img-left {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  grid-template-areas: 'figure copy';
+}
+
+.landing-showcase-row--img-left .landing-showcase-figure {
+  grid-area: figure;
+  width: 100%;
+  min-width: 0;
+  align-self: start;
+}
+
+.landing-showcase-row--img-left .landing-showcase-copy {
+  grid-area: copy;
+  min-width: 0;
+  align-self: start;
+}
+
+/* Typography aligned with hero: Fraunces headline + subline, deck body */
+.landing-showcase-title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  font-size: clamp(1.85rem, 4.2vw, 2.85rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: #f5f0e6;
+  text-shadow: 0 0 40px rgba(255, 215, 0, 0.08), 0 2px 20px rgba(0, 0, 0, 0.45);
+}
+
+.landing-showcase-subline {
+  margin: 0.55rem 0 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  font-size: clamp(1.15rem, 2.8vw, 1.65rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  color: rgba(245, 240, 230, 0.88);
+}
+
+.landing-showcase-body {
+  margin: 1.1rem 0 0;
+  max-width: min(100%, 36ch);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  font-size: clamp(0.95rem, 2.1vw, 1.08rem);
+  line-height: 1.55;
+  font-weight: 500;
+  color: rgba(245, 245, 245, 0.72);
+}
+
+.landing-showcase-row--img-right .landing-showcase-copy {
+  text-align: right;
+  justify-self: end;
+}
+
+.landing-showcase-row--img-right .landing-showcase-body {
+  margin-left: auto;
+}
+
+.landing-showcase-row--img-left .landing-showcase-copy {
+  text-align: left;
+  justify-self: start;
+}
+
+.landing-showcase-figure {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #121212;
+  line-height: 0;
+  isolation: isolate;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 0, 0.26),
+    0 12px 36px rgba(0, 0, 0, 0.38);
+}
+
+.landing-showcase-imgcrop {
+  overflow: hidden;
+  line-height: 0;
+  border-radius: inherit;
+}
+
+/* Trim a little browser chrome; brighten screenshots */
+.landing-showcase-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  clip-path: inset(4.5% 0 4.5% 0);
+  filter: brightness(1.14) contrast(1.04) saturate(1.06);
+}
+
+@media (max-width: 900px) {
+  .landing-showcase-row--img-right,
+  .landing-showcase-row--img-left {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'figure'
+      'copy';
+    gap: 1.5rem;
+  }
+
+  .landing-showcase-row--img-right .landing-showcase-copy,
+  .landing-showcase-row--img-left .landing-showcase-copy {
+    grid-area: copy;
+    text-align: center;
+    justify-self: center;
+  }
+
+  .landing-showcase-row--img-right .landing-showcase-figure,
+  .landing-showcase-row--img-left .landing-showcase-figure {
+    grid-area: figure;
+    width: 100%;
+    max-width: min(100%, 520px);
+    justify-self: center;
+  }
+
+  .landing-showcase-body {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 42ch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-showcase-kicker {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .landing-showcase-row {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/*
+ * Skyline band flush above yellow footer. Image: /public/landing-skyline-nyc.png
+ * Intrinsic size (update if asset changes): --skyline-w × --skyline-h
+ * Bottom crop via --skyline-crop-bottom; padding-bottom + overflow (no stretch).
+ */
+.landing-skyline {
+  position: relative;
+  z-index: 7;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  background: #000000;
+  overflow: hidden;
+}
+
+.landing-skyline-frame {
+  --skyline-w: 1024;
+  --skyline-h: 611;
+  /* visible height / width = (h/w) * (1 - bottom crop) */
+  --skyline-crop-bottom: 0.25;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  height: 0;
+  padding-bottom: calc(
+    100% * var(--skyline-h) / var(--skyline-w) * (1 - var(--skyline-crop-bottom))
+  );
+  overflow: hidden;
+  line-height: 0;
+}
+
+.landing-skyline-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.landing-skyline-vignette {
+  pointer-events: none;
+}
+
+/* Full-area overlay so stacking is reliable; gradient only darkens the top over the bitmap */
+.landing-skyline-vignette--top {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.78) 0%,
+    rgba(0, 0, 0, 0.38) 14%,
+    rgba(0, 0, 0, 0.12) 32%,
+    transparent 52%
+  );
 }
 
 .landing-blackout {
@@ -894,6 +1570,7 @@ onUnmounted(() => {
 .landing-bottom-brand {
   position: relative;
   z-index: 8;
+  margin-top: 0;
   background: #ffd700;
   color: #0a0a0a;
   padding: clamp(0.65rem, 1.8vw, 1rem) 0 0;
