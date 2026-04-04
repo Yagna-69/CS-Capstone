@@ -71,123 +71,13 @@
       <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
     </div>
 
-    <!-- r/wallstreetbets Carousel -->
-    <div class="mb-8">
-      <h2 class="text-4xl font-bold text-primary mb-4 font-goldman">r/wallstreetbets</h2>
-
-      <div v-if="wsbLoading" class="glass p-6 rounded-xl">
-        <div class="text-sm text-gray-300">Loading WSB posts...</div>
-      </div>
-      <div v-else-if="wsbError" class="glass p-6 rounded-xl">
-        <div class="text-sm text-red-400">{{ wsbError }}</div>
-      </div>
-      
-      <div v-else-if="wsbPosts.length > 0" class="relative">
-        <!-- Navigation Arrows -->
-        <button
-          v-if="wsbCurrentIndex > 0"
-          @click="manualPrevSlide"
-          class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 p-3 bg-bg-secondary/90 hover:bg-primary/20 rounded-full transition-colors border border-gray-700 hover:border-primary shadow-lg"
-        >
-          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        
-        <button
-          v-if="wsbCurrentIndex + 3 < wsbPosts.length"
-          @click="manualNextSlide"
-          class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 p-3 bg-bg-secondary/90 hover:bg-primary/20 rounded-full transition-colors border border-gray-700 hover:border-primary shadow-lg"
-        >
-          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-        
-        <!-- Carousel Content -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <a
-            v-for="post in visibleWsbPosts"
-            :key="post.id"
-            :href="post.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="wsb-card glass rounded-xl overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group"
-          >
-            <!-- Image Container -->
-            <div 
-              class="wsb-image-container relative w-full"
-              :style="post.thumbnail ? {} : { background: 'radial-gradient(circle at center, rgba(255, 215, 0, 0.15) 0%, rgba(26, 26, 26, 0.95) 70%)' }"
-            >
-              <img 
-                v-if="post.thumbnail"
-                :src="post.thumbnail" 
-                alt=""
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <div v-else class="flex items-center justify-center h-full">
-                <svg class="w-12 h-12 text-primary/30" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-                </svg>
-              </div>
-              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-            </div>
-
-            <!-- Content Footer -->
-            <div class="p-4 bg-bg-primary/80 backdrop-blur-sm relative">
-              <div class="flex items-start justify-between gap-2 mb-2">
-                <span v-if="post.flair" class="inline-block px-2 py-0.5 bg-primary/20 text-primary text-xs font-semibold rounded flex-shrink-0">
-                  {{ post.flair }}
-                </span>
-                <span class="text-xs text-gray-500 flex-shrink-0">{{ post.time }}</span>
-              </div>
-              
-              <h3 class="text-sm font-bold text-white mb-2 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
-                {{ post.title }}
-              </h3>
-              
-              <div class="flex items-center justify-between text-xs text-gray-500">
-                <div class="flex items-center gap-3">
-                  <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-                    </svg>
-                    {{ post.score }}
-                  </span>
-                  <span class="flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    {{ post.num_comments }}
-                  </span>
-                </div>
-                <span class="text-xs">u/{{ post.author }}</span>
-              </div>
-            </div>
-          </a>
-        </div>
-        
-        <!-- Pagination Dots -->
-        <div v-if="wsbPosts.length > 3" class="flex justify-center gap-2 mt-4">
-          <button
-            v-for="pageIndex in Math.ceil(wsbPosts.length / 3)"
-            :key="pageIndex"
-            @click="wsbCurrentIndex = (pageIndex - 1) * 3"
-            :class="[
-              'h-2 rounded-full transition-all',
-              Math.floor(wsbCurrentIndex / 3) === pageIndex - 1 
-                ? 'bg-primary w-8' 
-                : 'bg-gray-600 hover:bg-gray-500 w-2'
-            ]"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Curated News Heading -->
+    <!-- Curated News: 2-card bento + one row of 4 (6 stories; API fetch trimmed & deduped in store) -->
     <h2 class="text-4xl font-bold text-primary mb-6 font-goldman">Curated News</h2>
 
-    <!-- Bento Box Grid - Top Featured Stories -->
+    <div v-if="!loading && !error && !featuredStories.length && !regularStories.length" class="text-center text-gray-400 py-20">
+      No news available right now. Try again in a moment.
+    </div>
+
     <div class="bento-grid mb-6">
       <NewsStoryCard
         v-for="story in featuredStories"
@@ -198,12 +88,7 @@
       />
     </div>
 
-    <!-- Regular News Stories Grid -->
-    <div v-if="!loading && !error && !featuredStories.length && !regularStories.length" class="text-center text-gray-400 py-20">
-      No news available right now. Try again in a moment.
-    </div>
-
-    <div class="news-grid">
+    <div class="news-grid news-grid-four mb-6">
       <NewsStoryCard
         v-for="story in regularStories"
         :key="story.id"
@@ -211,24 +96,49 @@
       />
     </div>
 
-    <!-- Load More Button -->
-    <div v-if="currentSearchQuery && !loading && regularStories.length > 0" class="flex justify-center mt-8 mb-8">
+    <div v-if="currentSearchQuery && !loading && regularStories.length > 0" class="flex justify-center mb-10">
       <button
-        @click="loadMoreNews"
+        type="button"
         class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+        @click="loadMoreNews"
       >
         Load More Articles
       </button>
     </div>
+
+    <RedditHotCarousel
+      title="r/wallstreetbets"
+      :posts="wsbPosts"
+      :loading="wsbLoading"
+      :error="wsbError"
+    />
+    <RedditHotCarousel
+      title="r/economics"
+      :posts="econPosts"
+      :loading="econLoading"
+      :error="econError"
+    />
+
+    <!-- S&P 500 sector heatmap (TradingView stock treemap — equities, not futures) -->
+    <section class="mb-10" aria-label="S and P 500 stock heatmap">
+      <h2 class="text-4xl font-bold text-primary mb-2 font-goldman">S&amp;P 500 heatmap</h2>
+      <div
+        class="glass rounded-xl overflow-hidden border border-gray-700 p-2 md:p-4 min-h-[180px] h-[62vh] max-h-[400px] flex flex-col"
+      >
+        <TradingViewStockHeatmap class="min-h-0 flex-1" />
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import NewsStoryCard from '@/components/NewsStoryCard.vue'
+import RedditHotCarousel from '@/components/RedditHotCarousel.vue'
+import TradingViewStockHeatmap from '@/components/TradingViewStockHeatmap.vue'
 import { useNewsStore } from '@/stores/news'
 import { newsApi } from '@/services/api'
-import { fetchWallstreetbetsPosts } from '@/composables/useReddit'
+import { fetchWallstreetbetsPosts, fetchEconomicsPosts } from '@/composables/useReddit'
 
 const newsStore = useNewsStore()
 
@@ -244,63 +154,14 @@ const searchFocused = ref(false)
 const searchContainer = ref(null)
 const searchInput = ref(null)
 
-// WSB posts carousel
+// Reddit carousels (fetched client-side; see RedditHotCarousel.vue)
 const wsbPosts = ref([])
 const wsbLoading = ref(false)
 const wsbError = ref(null)
-const wsbCurrentIndex = ref(0)
-let wsbAutoRotateTimer = null
 
-const visibleWsbPosts = computed(() => {
-  return wsbPosts.value.slice(wsbCurrentIndex.value, wsbCurrentIndex.value + 3)
-})
-
-function nextWsbSlide() {
-  if (wsbCurrentIndex.value + 3 < wsbPosts.value.length) {
-    wsbCurrentIndex.value += 3
-  } else {
-    wsbCurrentIndex.value = 0  // Loop back to start
-  }
-}
-
-function prevWsbSlide() {
-  if (wsbCurrentIndex.value > 0) {
-    wsbCurrentIndex.value -= 3
-  } else {
-    // Go to last page
-    const totalPages = Math.ceil(wsbPosts.value.length / 3)
-    wsbCurrentIndex.value = (totalPages - 1) * 3
-  }
-}
-
-function startWsbAutoRotate() {
-  stopWsbAutoRotate()
-  if (wsbPosts.value.length > 3) {
-    wsbAutoRotateTimer = setInterval(() => {
-      nextWsbSlide()
-    }, 8000)  // Rotate every 8 seconds
-  }
-}
-
-function stopWsbAutoRotate() {
-  if (wsbAutoRotateTimer) {
-    clearInterval(wsbAutoRotateTimer)
-    wsbAutoRotateTimer = null
-  }
-}
-
-// Pause auto-rotate when user manually navigates
-function manualNextSlide() {
-  stopWsbAutoRotate()
-  nextWsbSlide()
-  setTimeout(startWsbAutoRotate, 15000)  // Resume after 15s
-}
-
-function manualPrevSlide() {
-  stopWsbAutoRotate()
-  prevWsbSlide()
-  setTimeout(startWsbAutoRotate, 15000)  // Resume after 15s
-}
+const econPosts = ref([])
+const econLoading = ref(false)
+const econError = ref(null)
 
 // Hardcoded forex-related search suggestions
 const searchSuggestions = [
@@ -336,29 +197,39 @@ function selectSuggestion(query) {
   performSearch()
 }
 
+const CURATED_TOTAL = 6
+const CURATED_FETCH = 8
+
+function storyUrlKey(story) {
+  return (story.url || '').trim().toLowerCase()
+}
+
 async function loadNews(query = null) {
   loading.value = true
   error.value = null
-  moreCount.value = 0  // Reset pagination
+  moreCount.value = 0
+
+  const normalizedQuery = query && String(query).trim() ? String(query).trim() : null
+  currentSearchQuery.value = normalizedQuery
 
   try {
-    // Use cached news from store
-    const articles = await newsStore.fetchNews(query, 15)  // 3 featured + 12 regular
-    
+    const articles = await newsStore.fetchNews(normalizedQuery, CURATED_FETCH)
+
     if (!articles || articles.length === 0) {
       error.value = 'No news articles found. Please try again later.'
       featuredStories.value = []
       regularStories.value = []
       return
     }
-    
-    const processedArticles = articles.map((article, index) => ({
+
+    const top = articles.slice(0, CURATED_TOTAL)
+    const processed = top.map((article, index) => ({
       ...article,
-      size: index === 0 ? 'large' : index <= 2 ? 'medium' : undefined,
+      size: index === 0 ? 'large' : index === 1 ? 'medium' : undefined,
     }))
 
-    featuredStories.value = processedArticles.slice(0, 3)
-    regularStories.value = processedArticles.slice(3, 15)  // Show up to 12 small cards
+    featuredStories.value = processed.slice(0, 2)
+    regularStories.value = processed.slice(2, CURATED_TOTAL)
   } catch (err) {
     console.error('Error loading news:', err)
     const status = err.response?.status
@@ -399,17 +270,27 @@ async function loadMoreNews() {
       return
     }
 
-    // Convert and append new articles
-    const articles = data.articles.map((article, index) => ({
-      id: article.id || `more-${moreCount.value}-${index}`,
-      headline: article.headline || article.title || 'Untitled',
-      date: article.date || '',
-      image: article.image || 'https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image',
-      url: article.url,
-      source: article.source,
-    }))
+    const seen = new Set(
+      [...featuredStories.value, ...regularStories.value].map(storyUrlKey).filter(Boolean)
+    )
 
-    // Append to regular stories (don't change featured)
+    const articles = data.articles
+      .map((article, index) => ({
+        id: article.id || `more-${moreCount.value}-${index}`,
+        headline: article.headline || article.title || 'Untitled',
+        date: article.date || '',
+        image: article.image || 'https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image',
+        url: article.url,
+        source: article.source,
+      }))
+      .filter((a) => {
+        const k = storyUrlKey(a)
+        if (!k) return true
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+
     regularStories.value.push(...articles)
   } catch (err) {
     const status = err.response?.status
@@ -423,15 +304,9 @@ async function loadMoreNews() {
 async function loadWsbPosts() {
   wsbLoading.value = true
   wsbError.value = null
-  
+
   try {
-    console.log('[WSB] Fetching from Reddit directly (frontend-side)...')
-    // Fetch directly from Reddit in the frontend to avoid GCP IP blocking
     wsbPosts.value = await fetchWallstreetbetsPosts(12)
-    console.log(`[WSB] Successfully loaded ${wsbPosts.value.length} posts from frontend`)
-    if (wsbPosts.value.length > 0) {
-      startWsbAutoRotate()  // Start auto-rotation after loading
-    }
   } catch (err) {
     console.error('[WSB] Failed to load WSB posts:', err)
     wsbError.value = 'Unable to load r/wallstreetbets posts.'
@@ -440,15 +315,29 @@ async function loadWsbPosts() {
   }
 }
 
+async function loadEconomicsPosts() {
+  econLoading.value = true
+  econError.value = null
+
+  try {
+    econPosts.value = await fetchEconomicsPosts(12)
+  } catch (err) {
+    console.error('[Economics] Failed to load r/economics posts:', err)
+    econError.value = 'Unable to load r/economics posts.'
+  } finally {
+    econLoading.value = false
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   loadNews()
   loadWsbPosts()
+  loadEconomicsPosts()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
-  stopWsbAutoRotate()
 })
 
 </script>
@@ -475,12 +364,7 @@ onUnmounted(() => {
 
   .medium:nth-child(2) {
     grid-column: 2;
-    grid-row: 1;
-  }
-
-  .medium:nth-child(3) {
-    grid-column: 2;
-    grid-row: 2;
+    grid-row: 1 / span 2;
   }
 }
 
@@ -497,12 +381,7 @@ onUnmounted(() => {
 
   .medium:nth-child(2) {
     grid-column: 3;
-    grid-row: 1;
-  }
-
-  .medium:nth-child(3) {
-    grid-column: 3;
-    grid-row: 2;
+    grid-row: 1 / span 2;
   }
 }
 
@@ -531,37 +410,22 @@ onUnmounted(() => {
   }
 }
 
-/* WSB Cards */
-.wsb-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+/* Single row of four under the bento (curated strip) */
+.news-grid-four {
+  grid-template-columns: 1fr;
 }
 
-.wsb-card:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 215, 0, 0.3);
-  transform: translateY(-2px);
-}
-
-.wsb-image-container {
-  height: 180px;
-  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-  overflow: hidden;
-  position: relative;
-}
-
-@media (min-width: 768px) {
-  .wsb-image-container {
-    height: 200px;
+@media (min-width: 640px) {
+  .news-grid-four {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (min-width: 1024px) {
-  .wsb-image-container {
-    height: 220px;
+  .news-grid-four {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
+
 </style>
 

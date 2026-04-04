@@ -2,6 +2,24 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { newsApi } from '@/services/api'
 
+function dedupeArticlesByUrl(articles) {
+  const seen = new Set()
+  const out = []
+  for (const a of articles) {
+    const u = (a.url || '').trim().toLowerCase()
+    if (u) {
+      if (seen.has(u)) continue
+      seen.add(u)
+    } else {
+      const k = `${(a.headline || '').trim().toLowerCase()}|${(a.source || '').trim().toLowerCase()}`
+      if (seen.has(k)) continue
+      seen.add(k)
+    }
+    out.push(a)
+  }
+  return out
+}
+
 /**
  * Centralized news caching store to reduce API calls.
  * Caches news results for 5 minutes per unique query.
@@ -37,7 +55,7 @@ export const useNewsStore = defineStore('news', () => {
       const { data } = await newsApi.getNews(undefined, limit, searchQuery)
       
       if (data.status === 'ok' && data.articles) {
-        const articles = data.articles.map((article, index) => ({
+        const mapped = data.articles.map((article, index) => ({
           id: article.id || `${cacheKey}-${index}`,
           headline: article.headline || article.title || 'Untitled',
           date: article.date || '',
@@ -46,13 +64,15 @@ export const useNewsStore = defineStore('news', () => {
           source: article.source,
           description: article.description || ''
         }))
-        
+
+        const articles = dedupeArticlesByUrl(mapped)
+
         // Update cache
         cache.value[cacheKey] = {
           articles,
           fetchedAt: now
         }
-        
+
         return articles
       }
       
