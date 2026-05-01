@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { newsApi } from '@/services/api'
 
+const REDDIT_CACHE_TTL_MS = 15 * 60 * 1000  // 15 min — Reddit posts change slowly
+
 function dedupeArticlesByUrl(articles) {
   const seen = new Set()
   const out = []
@@ -25,34 +27,45 @@ function dedupeArticlesByUrl(articles) {
  * Caches news results for 5 minutes per unique query.
  */
 export const useNewsStore = defineStore('news', () => {
-  const CACHE_TTL_MS = 5 * 60 * 1000  // 5 minutes
+  const CACHE_TTL_MS = 30 * 60 * 1000  // 30 minutes — NewsAPI free tier = 100 req/day
   
   // Cache structure: { query: { articles: [...], fetchedAt: timestamp } }
   const cache = ref({})
   
   /**
    * Fetch news with caching.
+   * Cache key is query-only (not limit) so the same query at different limits
+   * reuses the same cached result instead of burning extra API calls.
    * @param {string} query - Search query (null for default forex news)
-   * @param {number} limit - Number of articles to fetch
+   * @param {number} limit - Number of articles to return (sliced from cached set)
    * @returns {Promise<Array>} - Array of articles
    */
   async function fetchNews(query = null, limit = 10) {
-    const cacheKey = `${query || 'forex-default'}:${limit}`
+    const cacheKey = query || 'forex-default'
     const now = Date.now()
     
-    // Check cache
+    // Check cache — return a slice so callers with smaller limits get fewer items
     const cached = cache.value[cacheKey]
     if (cached && (now - cached.fetchedAt) < CACHE_TTL_MS) {
-      console.log(`[NewsStore] Using cached news for "${cacheKey}"`)
-      return cached.articles
+      return cached.articles.slice(0, limit)
     }
-    
-    // Fetch fresh data
-    console.log(`[NewsStore] Fetching fresh news for "${cacheKey}"`)
+
+    // Deduplicate in-flight requests for the same query
+    if (cache.value[`${cacheKey}:inflight`]) {
+      await cache.value[`${cacheKey}:inflight`]
+      const fresh = cache.value[cacheKey]
+      return fresh ? fresh.articles.slice(0, limit) : []
+    }
+
+    // Fetch fresh data — always request a generous page size so the cache
+    // covers all callers regardless of their individual limit argument.
+    const FETCH_SIZE = 20
+    let resolve
+    cache.value[`${cacheKey}:inflight`] = new Promise(r => { resolve = r })
+
     try {
-      // Pass query as-is, or 'forex' as default if null
       const searchQuery = query || 'forex'
-      const { data } = await newsApi.getNews(undefined, limit, searchQuery)
+      const { data } = await newsApi.getNews(undefined, FETCH_SIZE, searchQuery)
       
       if (data.status === 'ok' && data.articles) {
         const mapped = data.articles.map((article, index) => ({
@@ -66,26 +79,17 @@ export const useNewsStore = defineStore('news', () => {
         }))
 
         const articles = dedupeArticlesByUrl(mapped)
-
-        // Update cache
-        cache.value[cacheKey] = {
-          articles,
-          fetchedAt: now
-        }
-
-        return articles
+        cache.value[cacheKey] = { articles, fetchedAt: now }
+        return articles.slice(0, limit)
       }
-      
-      // If no articles, return empty array
       return []
     } catch (err) {
       console.error('[NewsStore] Failed to fetch news:', err)
-      // Return cached data if available, even if stale
-      if (cached) {
-        console.log(`[NewsStore] Returning stale cache for "${cacheKey}"`)
-        return cached.articles
-      }
+      if (cached) return cached.articles.slice(0, limit)
       throw err
+    } finally {
+      delete cache.value[`${cacheKey}:inflight`]
+      resolve?.()
     }
   }
   
@@ -107,9 +111,61 @@ export const useNewsStore = defineStore('news', () => {
     }
   }
   
+  // ── Reddit cache ─────────────────────────────────────────────────────────
+  const redditCache = ref({})  // { 'wsb' | 'economics': { posts, fetchedAt } }
+
+  async function fetchRedditPosts(subreddit, limit = 12) {
+    const now    = Date.now()
+    const cached = redditCache.value[subreddit]
+    if (cached && (now - cached.fetchedAt) < REDDIT_CACHE_TTL_MS) {
+      return cached.posts.slice(0, limit)
+    }
+
+    // Deduplicate in-flight
+    const inflightKey = `${subreddit}:inflight`
+    if (redditCache.value[inflightKey]) {
+      await redditCache.value[inflightKey]
+      const fresh = redditCache.value[subreddit]
+      return fresh ? fresh.posts.slice(0, limit) : []
+    }
+
+    let resolve
+    redditCache.value[inflightKey] = new Promise(r => { resolve = r })
+
+    try {
+      const fetcher = subreddit === 'wsb'
+        ? () => newsApi.getWsbPosts(limit)
+        : () => newsApi.getEconomicsPosts(limit)
+      const { data } = await fetcher()
+      const posts = (data?.posts || []).map(p => ({
+        id:           p.id,
+        title:        p.title,
+        author:       p.author,
+        score:        p.score,
+        num_comments: p.num_comments,
+        time:         p.time,
+        url:          p.url,
+        thumbnail:    p.thumbnail    || null,
+        outbound_url: p.outbound_url || null,
+        flair:        p.flair        || '',
+        selftext:     p.selftext     || '',
+      }))
+      redditCache.value[subreddit] = { posts, fetchedAt: now }
+      return posts.slice(0, limit)
+    } catch (err) {
+      if (cached) return cached.posts.slice(0, limit)
+      throw err
+    } finally {
+      delete redditCache.value[inflightKey]
+      resolve?.()
+    }
+  }
+
   return {
     fetchNews,
+    fetchRedditPosts,
     clearCache,
-    cache
+    cache,
+    redditCache,
   }
 })

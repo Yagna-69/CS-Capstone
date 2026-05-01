@@ -11,8 +11,9 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 
-CACHE_TTL = 8          # seconds between live rate fetches — frontend polls every 4s so
-                        # alternating polls always hit cache; cold fetches are half as frequent
+CACHE_TTL = 30         # seconds between live rate refreshes; frontend polls every 5s so
+                        # nearly every poll hits cache (~65ms). A background warmer (see
+                        # warm_active_pairs) refreshes before expiry to eliminate cold misses.
 HISTORY_CACHE_TTL = 300  # seconds for historical data (OHLC, historical rates)
 
 # Shared thread pool for parallel yfinance calls in get_rates()
@@ -327,3 +328,32 @@ def get_historical_ohlc(
     _ohlc_cache[key] = (out, now)
     _save_to_disk(key, out, now)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Background cache warmer
+# ---------------------------------------------------------------------------
+
+_warm_pairs: set[tuple[str, str]] = set()
+
+def register_warm_pairs(pairs: list[tuple[str, str]]) -> None:
+    """Register pairs that should be proactively kept warm."""
+    _warm_pairs.update((f.upper(), t.upper()) for f, t in pairs)
+
+
+def warm_active_pairs() -> None:
+    """
+    Refresh any registered pair whose cache entry will expire within the next
+    poll cycle (CACHE_TTL - 5s).  Called by the background task in main.py
+    every ~25s so clients never hit a cold yfinance fetch.
+    """
+    if not _warm_pairs:
+        return
+    now = time.time()
+    refresh_threshold = CACHE_TTL - 5  # start refreshing 5s before expiry
+    stale = [
+        (f, t) for f, t in _warm_pairs
+        if (now - _cache.get(f"{f}{t}", (None, 0))[1]) >= refresh_threshold
+    ]
+    if stale:
+        get_rates(stale)  # parallel fetch, updates _cache in place

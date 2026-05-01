@@ -390,104 +390,73 @@
         <div
           v-for="order in pendingOrders"
           :key="order.order_id"
-          class="rounded-xl border bg-bg-primary overflow-hidden"
+          class="bg-bg-primary rounded-lg px-4 py-3 border hover:border-gray-700 transition"
           :class="order.status === 'PENDING'
-            ? 'border-gray-700'
+            ? 'border-gray-800'
             : order.status === 'FILLED'
-              ? 'border-primary/25'
-              : 'border-gray-800 opacity-60'"
+              ? 'border-primary/20'
+              : 'border-gray-800 opacity-50'"
         >
-          <!-- Top accent line for pending orders -->
-          <div v-if="order.status === 'PENDING'" class="h-0.5 w-full bg-yellow-500/60"></div>
-          <div v-else-if="order.status === 'FILLED'" class="h-0.5 w-full bg-primary"></div>
-
-          <div class="px-4 py-3">
-            <!-- Header row: type badge + pair + status + cancel -->
-            <div class="flex items-start justify-between gap-2 mb-3">
-              <div class="flex items-center gap-2 flex-wrap">
-                <!-- Order type badge -->
-                <span
-                  class="text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border"
-                  :class="order.order_type === 'Limit'
-                    ? 'text-blue-300 border-blue-500/40 bg-blue-500/10'
-                    : order.order_type === 'Stop'
-                      ? 'text-orange-300 border-orange-500/40 bg-orange-500/10'
-                      : 'text-purple-300 border-purple-500/40 bg-purple-500/10'"
-                >{{ order.order_type }}</span>
-
-                <!-- Pair -->
-                <span class="text-white font-bold text-sm">{{ order.from_currency }}/{{ order.to_currency }}</span>
-
-                <!-- Status -->
-                <span
-                  class="text-xs font-semibold uppercase tracking-wider"
-                  :class="order.status === 'PENDING' ? 'text-yellow-400'
-                    : order.status === 'FILLED' ? 'text-primary'
-                    : 'text-gray-500'"
-                >{{ order.status }}</span>
-              </div>
-
-              <!-- Cancel button (PENDING only) -->
-              <button
-                v-if="order.status === 'PENDING'"
-                class="shrink-0 text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-500/40 rounded-lg px-2 py-1 transition font-semibold"
-                @click="cancelOrder(order.order_id)"
-              >Cancel</button>
-            </div>
-
-            <!-- Order specifics grid -->
-            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-              <!-- Amount -->
-              <div>
-                <span class="text-gray-500 block">Amount</span>
-                <span class="text-white font-mono font-semibold">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span>
-              </div>
-
-              <!-- Order type-specific condition -->
-              <div v-if="order.order_type === 'Limit'">
-                <span class="text-gray-500 block">Fill when rate ≤</span>
-                <span class="text-blue-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
-              </div>
-              <div v-else-if="order.order_type === 'Stop'">
-                <span class="text-gray-500 block">Fill when rate ≥</span>
-                <span class="text-orange-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
-              </div>
-              <div v-else-if="order.order_type === 'Stop-Limit'">
-                <span class="text-gray-500 block">Stop triggers at ≥</span>
-                <span class="text-purple-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
-              </div>
-
-              <!-- Limit price (Stop-Limit only) -->
-              <div v-if="order.order_type === 'Stop-Limit' && order.limit_price">
-                <span class="text-gray-500 block">Fills only up to</span>
-                <span class="text-purple-200 font-mono font-semibold">{{ Number(order.limit_price).toFixed(6) }} {{ order.to_currency }}</span>
-              </div>
-
-              <!-- Placed date -->
-              <div>
-                <span class="text-gray-500 block">Placed</span>
-                <span class="text-gray-400">{{ formatDate(order.created_at) }}</span>
-              </div>
-
-              <!-- Filled date (if filled) -->
-              <div v-if="order.status === 'FILLED' && order.filled_at">
-                <span class="text-gray-500 block">Filled</span>
-                <span class="text-primary">{{ formatDate(order.filled_at) }}</span>
+          <!-- Top row: order type badge + pair + amount → condition + cancel -->
+          <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
+            <div class="flex items-center gap-3">
+              <!-- type badge -->
+              <span
+                class="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border"
+                :class="order.order_type === 'Limit'
+                  ? 'text-blue-300 border-blue-500/40 bg-blue-500/10'
+                  : order.order_type === 'Stop'
+                    ? 'text-orange-300 border-orange-500/40 bg-orange-500/10'
+                    : 'text-purple-300 border-purple-500/40 bg-purple-500/10'"
+              >{{ order.order_type }}</span>
+              <!-- pair -->
+              <div class="flex items-center gap-2 text-sm">
+                <span class="text-white font-semibold">{{ order.from_currency }}</span>
+                <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+                <span class="text-white font-semibold">{{ order.to_currency }}</span>
               </div>
             </div>
 
-            <!-- Explanation row for pending -->
-            <div v-if="order.status === 'PENDING'" class="mt-3 pt-2.5 border-t border-gray-800 text-xs text-gray-600 leading-relaxed">
+            <!-- amount → trigger condition -->
+            <div class="flex items-center gap-2 text-sm font-mono">
+              <span class="text-gray-400">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span>
+              <span class="text-gray-600">@</span>
               <template v-if="order.order_type === 'Limit'">
-                Will automatically buy <span class="text-gray-400">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span> worth of <span class="text-gray-400">{{ order.to_currency }}</span> once the rate drops to <span class="text-blue-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span> or lower.
+                <span class="text-blue-300 font-bold">≤ {{ Number(order.target_price).toFixed(6) }}</span>
               </template>
               <template v-else-if="order.order_type === 'Stop'">
-                Will automatically sell <span class="text-gray-400">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span> once the rate reaches <span class="text-orange-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span> or higher.
+                <span class="text-orange-300 font-bold">≥ {{ Number(order.target_price).toFixed(6) }}</span>
               </template>
-              <template v-else-if="order.order_type === 'Stop-Limit'">
-                Triggered when rate hits <span class="text-purple-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span>, but only fills if rate is still ≤ <span class="text-purple-300 font-mono">{{ Number(order.limit_price).toFixed(6) }}</span>.
+              <template v-else>
+                <span class="text-purple-300 font-bold">≥ {{ Number(order.target_price).toFixed(6) }}</span>
+                <span class="text-gray-600">/</span>
+                <span class="text-purple-200 font-bold">≤ {{ Number(order.limit_price).toFixed(6) }}</span>
               </template>
             </div>
+          </div>
+
+          <!-- Bottom row: status + placed date + id + cancel -->
+          <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div class="flex items-center gap-3 text-gray-500">
+              <span
+                class="font-semibold uppercase tracking-wider"
+                :class="order.status === 'PENDING' ? 'text-yellow-500'
+                  : order.status === 'FILLED' ? 'text-primary'
+                  : 'text-gray-500'"
+              >{{ order.status }}</span>
+              <span>{{ formatDate(order.created_at) }}</span>
+              <span v-if="order.status === 'FILLED' && order.filled_at" class="text-primary">
+                Filled {{ formatDate(order.filled_at) }}
+              </span>
+              <span class="font-mono text-gray-600">{{ order.order_id?.slice(0, 8) }}</span>
+            </div>
+            <button
+              v-if="order.status === 'PENDING'"
+              class="text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-500/40 rounded px-2 py-0.5 transition font-semibold"
+              @click="cancelOrder(order.order_id)"
+            >Cancel</button>
           </div>
         </div>
       </div>

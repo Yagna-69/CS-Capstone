@@ -1,7 +1,12 @@
 """
 News routes — integrates NewsAPI for forex news and Reddit for WSB posts.
+
+Backend cache (NEWS_CACHE_TTL) is intentionally long (30 min) to stay within
+the NewsAPI free tier (100 req/day). All users share the same cache so one
+fetch serves everyone until TTL expires.
 """
 
+import time
 from fastapi import APIRouter, HTTPException
 from config import settings
 import httpx
@@ -9,222 +14,229 @@ from datetime import datetime, timedelta
 
 router = APIRouter()
 
+# { cache_key: (articles_list, fetched_at) }
+_news_cache: dict[str, tuple[list, float]] = {}
+NEWS_CACHE_TTL = 30 * 60  # 30 minutes
 
-@router.get("/reddit/wsb")
-async def get_wsb_posts(limit: int = 10):
-    """
-    Return hot posts from r/wallstreetbets.
-    Query params:
-      - limit: max number of posts (default 10, max 25)
-    """
-    limit = max(1, min(limit, 25))  # Reddit allows up to 100, but we'll cap at 25
-    
-    # Fetch more to account for filtered stickied posts
+
+
+async def _fetch_subreddit_hot(subreddit: str, limit: int) -> dict:
+    """Shared helper — proxies a subreddit's hot.json through the backend to avoid CORS."""
+    limit = max(1, min(limit, 25))
     fetch_limit = limit + 5
-    
-    # Reddit public JSON API - no auth required for read-only access
-    # Try .json endpoint first, fallback to old.reddit.com if blocked
-    url = f"https://www.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
-    
-    # More complete browser headers to avoid being blocked by Reddit
+    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
     }
-    
     try:
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
+            if resp.status_code == 403:
+                old_url = f"https://old.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}"
+                resp = await client.get(old_url, headers=headers)
             resp.raise_for_status()
             payload = resp.json()
     except httpx.HTTPStatusError as exc:
-        # If blocked (403), try old.reddit.com as fallback
-        if exc.response.status_code == 403:
-            try:
-                old_url = f"https://old.reddit.com/r/wallstreetbets/hot.json?limit={fetch_limit}"
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    resp = await client.get(old_url, headers=headers)
-                    resp.raise_for_status()
-                    payload = resp.json()
-            except Exception:
-                raise HTTPException(403, "Reddit API blocked request. This may happen when accessing from cloud infrastructure.")
-        else:
-            raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
+        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
     except Exception as exc:
         raise HTTPException(502, f"Failed to fetch Reddit posts: {str(exc)}")
-    
+
+    _REDDIT_MEDIA = {
+        "external-preview.redd.it", "preview.redd.it", "i.redd.it",
+        "external-preview.redditmedia.com", "preview.redditmedia.com",
+    }
+
+    def _decode(url: str) -> str:
+        return (url or "").replace("&amp;", "&").strip()
+
+    def _pick_thumbnail(post: dict) -> str | None:
+        # 1. preview.images[0].source  (highest quality)
+        imgs = post.get("preview", {}).get("images", [])
+        if imgs:
+            src = _decode(imgs[0].get("source", {}).get("url", ""))
+            if src:
+                return src
+            # fall through to resolutions if source is empty
+            ress = imgs[0].get("resolutions", [])
+            if ress:
+                best = _decode(ress[-1].get("url", ""))
+                if best:
+                    return best
+
+        # 2. oembed thumbnail (video/link previews)
+        oembed = (post.get("secure_media") or post.get("media") or {}).get("oembed", {})
+        oe_thumb = _decode(oembed.get("thumbnail_url", ""))
+        if oe_thumb:
+            return oe_thumb
+
+        # 3. submission URL when it's a reddit-hosted image
+        sub_url = _decode(post.get("url", ""))
+        if sub_url:
+            try:
+                host = sub_url.split("/")[2].lower().lstrip("www.")
+                if host in _REDDIT_MEDIA:
+                    return sub_url
+            except IndexError:
+                pass
+
+        # 4. legacy thumbnail field
+        thumb = _decode(post.get("thumbnail", ""))
+        if thumb and thumb not in ("self", "default", "nsfw", "spoiler"):
+            return thumb
+
+        return None
+
+    def _outbound_url(post: dict) -> str | None:
+        """External article URL for link posts — used by Microlink OG fallback on the client."""
+        if post.get("is_self"):
+            return None
+        u = _decode(post.get("url", ""))
+        if not u or not u.startswith("http"):
+            return None
+        try:
+            host = u.split("/")[2].lower().lstrip("www.")
+        except IndexError:
+            return None
+        if host in ("reddit.com", "redd.it") or host.endswith(".reddit.com") or host.endswith(".redd.it"):
+            return None
+        if host in _REDDIT_MEDIA:
+            return None
+        return u
+
     posts = []
     for post_data in payload.get("data", {}).get("children", []):
         post = post_data.get("data", {})
-        
-        # Skip stickied/pinned posts
         if post.get("stickied"):
             continue
-        
-        # Try to get high-quality preview image
-        thumbnail = None
-        preview_images = post.get("preview", {}).get("images", [])
-        if preview_images:
-            # Get the source image URL (highest quality)
-            source = preview_images[0].get("source", {})
-            thumbnail = source.get("url", "")
-            # Decode HTML entities in URL
-            if thumbnail:
-                thumbnail = thumbnail.replace("&amp;", "&")
-        
-        # Fallback to thumbnail if no preview
-        if not thumbnail:
-            thumbnail = post.get("thumbnail", "")
-            if thumbnail in ["self", "default", "nsfw", "spoiler", ""]:
-                thumbnail = None
-        
-        # Format timestamp as relative time
-        created = post.get("created_utc", 0)
-        now = datetime.utcnow().timestamp()
-        hours_ago = int((now - created) / 3600)
-        time_str = f"{hours_ago}h ago" if hours_ago < 24 else f"{int(hours_ago / 24)}d ago"
-        
+        thumbnail   = _pick_thumbnail(post)
+        outbound    = None if thumbnail else _outbound_url(post)
+        created     = post.get("created_utc", 0)
+        now_ts      = datetime.utcnow().timestamp()
+        hours_ago   = int((now_ts - created) / 3600)
+        time_str    = f"{hours_ago}h ago" if hours_ago < 24 else f"{int(hours_ago / 24)}d ago"
         posts.append({
-            "id": post.get("id"),
-            "title": post.get("title", "Untitled"),
-            "author": post.get("author", "Unknown"),
-            "score": post.get("score", 0),
+            "id":           post.get("id"),
+            "title":        post.get("title", "Untitled"),
+            "author":       post.get("author", "Unknown"),
+            "score":        post.get("score", 0),
             "num_comments": post.get("num_comments", 0),
-            "time": time_str,
-            "url": f"https://www.reddit.com{post.get('permalink', '')}",
-            "thumbnail": thumbnail,
-            "flair": post.get("link_flair_text", ""),
-            "selftext": post.get("selftext", "")[:200] + "..." if post.get("selftext") else ""
+            "time":         time_str,
+            "url":          f"https://www.reddit.com{post.get('permalink', '')}",
+            "thumbnail":    thumbnail,
+            "outbound_url": outbound,
+            "flair":        post.get("link_flair_text", ""),
+            "selftext":     post.get("selftext", "")[:200] + "..." if post.get("selftext") else "",
         })
-        
         if len(posts) >= limit:
             break
-    
     return {"status": "ok", "posts": posts}
+
+
+@router.get("/reddit/wsb")
+async def get_wsb_posts(limit: int = 10):
+    return await _fetch_subreddit_hot("wallstreetbets", limit)
+
+
+@router.get("/reddit/economics")
+async def get_economics_posts(limit: int = 10):
+    return await _fetch_subreddit_hot("economics", limit)
+
+
+def _build_news_query(currency: str | None, q: str | None) -> str:
+    if q:
+        return f'({q}) AND (forex OR "foreign exchange" OR "currency market" OR FX OR "exchange rate")'
+    if currency:
+        return f'({currency}) AND (forex OR "foreign exchange" OR "currency market" OR "exchange rate" OR "central bank")'
+    return '(forex OR "foreign exchange" OR "currency trading" OR FX) AND ("exchange rate" OR market OR trader OR "central bank")'
+
+
+def _parse_articles(raw: list, max_items: int) -> list:
+    spam = {'recipe', 'fashion show', 'celebrity gossip', 'entertainment awards',
+            'sports score', 'weather forecast', 'horoscope'}
+    out = []
+    for idx, a in enumerate(raw):
+        title = (a.get("title") or "").lower()
+        if any(s in title for s in spam):
+            continue
+        published_at = a.get("publishedAt") or ""
+        out.append({
+            "id":          a.get("url") or str(idx),
+            "headline":    a.get("title") or "Untitled",
+            "date":        published_at[:10] if published_at else "",
+            "image":       a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image",
+            "source":      a.get("source", {}).get("name", "Unknown"),
+            "url":         a.get("url"),
+            "description": a.get("description") or "",
+        })
+        if len(out) >= max_items:
+            break
+    return out
 
 
 @router.get("/")
 async def get_news(currency: str = None, limit: int = 10, q: str = None):
     """
     Return forex news articles.
-    Optional query params:
-      - currency: filter by ticker (e.g. "USD")
-      - limit: max number of articles (default 10)
-      - q: user search query (free text)
+    Results are cached server-side for NEWS_CACHE_TTL (30 min) so all users
+    share a single NewsAPI call per unique query — staying within free tier limits.
     """
     if not settings.newsapi_key:
         raise HTTPException(500, "NEWSAPI_KEY is not configured")
 
-    limit = max(1, min(limit, 100))  # Allow up to 100 articles per request
+    limit = max(1, min(limit, 100))
 
-    # Build more specific query strings for better relevance
-    # Use AND operators to ensure all results are forex-related
-    if q:
-        # User search - add forex context to improve relevance
-        query = f'({q}) AND (forex OR "foreign exchange" OR "currency market" OR FX OR "exchange rate")'
-    elif currency:
-        # Currency-specific - focus on that currency in forex context
-        query = f'({currency}) AND (forex OR "foreign exchange" OR "currency market" OR "exchange rate" OR "central bank")'
-    else:
-        # Default forex news with quality sources
-        query = '(forex OR "foreign exchange" OR "currency trading" OR FX) AND ("exchange rate" OR market OR trader OR "central bank")'
+    query_str  = _build_news_query(currency, q)
+    cache_key  = query_str[:120]  # cap key length
+    now        = time.time()
 
-    # Only fetch what we need - add small buffer for potential bad articles
-    fetch_limit = min(limit + 5, 100)
+    # Serve from cache if fresh — limit is applied as a slice, not a new API call
+    cached_articles, cached_at = _news_cache.get(cache_key, (None, 0))
+    if cached_articles is not None and (now - cached_at) < NEWS_CACHE_TTL:
+        return {"status": "ok", "articles": cached_articles[:limit]}
 
+    # Fetch a generous page (up to 25) so the cached set covers all callers
+    FETCH_SIZE = 25
     params = {
-        "apiKey": settings.newsapi_key,
+        "apiKey":   settings.newsapi_key,
         "language": "en",
-        "pageSize": fetch_limit,
-        "q": query,
-        "sortBy": "publishedAt",
-        "page": 1,
-        "from": (datetime.utcnow() - timedelta(days=14)).isoformat() + 'Z',  # Last 14 days for more relevant news
+        "pageSize": FETCH_SIZE,
+        "q":        query_str,
+        "sortBy":   "publishedAt",
+        "page":     1,
+        "from":     (datetime.utcnow() - timedelta(days=14)).isoformat() + 'Z',
     }
-
-    url = "https://newsapi.org/v2/everything"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, params=params)
+            resp = await client.get("https://newsapi.org/v2/everything", params=params)
             resp.raise_for_status()
             payload = resp.json()
     except httpx.HTTPStatusError as exc:
+        # On 429 return stale cache if available, else propagate
+        if exc.response.status_code == 429 and cached_articles is not None:
+            return {"status": "ok", "articles": cached_articles[:limit]}
         raise HTTPException(exc.response.status_code, f"News API error: {exc.response.text}")
     except Exception as exc:
+        if cached_articles is not None:
+            return {"status": "ok", "articles": cached_articles[:limit]}
         raise HTTPException(502, f"Failed to fetch news: {str(exc)}")
 
     if payload.get("status") != "ok":
         raise HTTPException(502, f"NewsAPI bad status: {payload.get('message', 'unknown')}")
 
-    # Light filtering - only exclude obvious spam
-    articles = []
-    spam_keywords = ['recipe', 'fashion show', 'celebrity gossip', 'entertainment awards', 'sports score', 'weather forecast', 'horoscope']
-    
-    for idx, a in enumerate(payload.get("articles", [])):
-        title = (a.get("title") or "").lower()
-        
-        # Skip obvious spam
-        is_spam = any(spam in title for spam in spam_keywords)
-        
-        if not is_spam:
-            image_url = a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image"
-            published_at = a.get("publishedAt") or ""
-            articles.append({
-                "id": a.get("url") or str(idx),
-                "headline": a.get("title") or "Untitled",
-                "date": (published_at[:10] if published_at else ""),
-                "image": image_url,
-                "source": a.get("source", {}).get("name", "Unknown"),
-                "url": a.get("url"),
-                "description": a.get("description", ""),
-            })
-            
-            if len(articles) >= limit:
-                break
-
-    # If no results after filtering, try simpler fallback (only for custom queries)
-    if not articles and q:
-        fallback_params = params.copy()
-        fallback_params["q"] = "forex market"
-        fallback_params["pageSize"] = limit
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url, params=fallback_params)
-                resp.raise_for_status()
-                fallback_payload = resp.json()
-                if fallback_payload.get("status") == "ok":
-                    for idx, a in enumerate(fallback_payload.get("articles", [])[:limit]):
-                        image_url = a.get("urlToImage") or "https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image"
-                        published_at = a.get("publishedAt") or ""
-                        articles.append({
-                            "id": a.get("url") or f"fallback-{idx}",
-                            "headline": a.get("title") or "Untitled",
-                            "date": (published_at[:10] if published_at else ""),
-                            "image": image_url,
-                            "source": a.get("source", {}).get("name", "Unknown"),
-                            "url": a.get("url"),
-                            "description": a.get("description", ""),
-                        })
-        except Exception:
-            pass  # Ignore fallback errors
+    articles = _parse_articles(payload.get("articles", []), FETCH_SIZE)
 
     if not articles:
-        # Safety fallback item so UI has something to display
-        articles = [
-            {
-                "id": "fx-fallback-1",
-                "headline": "Forex market update: No recent headlines available. Please check back soon.",
-                "date": datetime.utcnow().date().isoformat(),
-                "image": "https://placehold.co/400x300/1a1a1a/FFD700?text=FX",
-                "source": "FXTrade", 
-                "url": "",
-            }
-        ]
+        articles = [{
+            "id":       "fx-fallback-1",
+            "headline": "Forex market update: No recent headlines available. Please check back soon.",
+            "date":     datetime.utcnow().date().isoformat(),
+            "image":    "https://placehold.co/400x300/1a1a1a/FFD700?text=FX",
+            "source":   "FXTrade",
+            "url":      "",
+        }]
 
-    return {"status": "ok", "articles": articles}
+    _news_cache[cache_key] = (articles, now)
+    return {"status": "ok", "articles": articles[:limit]}

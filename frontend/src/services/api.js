@@ -85,8 +85,9 @@ export const ordersApi = {
 }
 
 export const newsApi = {
-  getNews: (currency, limit, q) => apiClient.get('/news', { params: { currency, limit, q } }),
-  getWsbPosts: (limit) => apiClient.get('/news/reddit/wsb', { params: { limit } }),
+  getNews:          (currency, limit, q) => apiClient.get('/news',                { params: { currency, limit, q } }),
+  getWsbPosts:      (limit)              => apiClient.get('/news/reddit/wsb',       { params: { limit } }),
+  getEconomicsPosts:(limit)              => apiClient.get('/news/reddit/economics', { params: { limit } }),
 }
 
 export default apiClient

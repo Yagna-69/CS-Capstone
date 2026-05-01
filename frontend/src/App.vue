@@ -426,10 +426,14 @@ onUnmounted(() => {
           : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6'
       "
     >
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <keep-alive :include="['NewsView']">
+          <component :is="Component" />
+        </keep-alive>
+      </RouterView>
     </main>
   </div>
-  
+
   <RouterView v-else />
 </template>
 

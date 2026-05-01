@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from routes import api_router  # routes/ package — replaces the old routes.py
 
-POLL_INTERVAL_SECS = 3  # check pending orders every N seconds
+POLL_INTERVAL_SECS  = 3   # check pending orders every N seconds
+WARM_INTERVAL_SECS  = 25  # proactively refresh forex cache before TTL expires (TTL=30s)
 
 
 def _process_pending_orders_sync():
@@ -129,15 +130,33 @@ async def _fill_pending_orders():
             continue
 
 
+async def _warm_forex_cache():
+    """
+    Proactively refresh the forex rate cache every WARM_INTERVAL_SECS so that
+    client polls (every 5s) always hit a warm cache entry instead of blocking
+    on a yfinance network call.
+    """
+    from forex_service import warm_active_pairs
+    while True:
+        await asyncio.sleep(WARM_INTERVAL_SECS)
+        try:
+            await asyncio.to_thread(warm_active_pairs)
+        except Exception:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_fill_pending_orders())
+    pending_task = asyncio.create_task(_fill_pending_orders())
+    warmer_task  = asyncio.create_task(_warm_forex_cache())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    pending_task.cancel()
+    warmer_task.cancel()
+    for t in (pending_task, warmer_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

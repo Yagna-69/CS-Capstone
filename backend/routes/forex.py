@@ -6,6 +6,7 @@ from forex_service import (
     get_rate,
     get_rates,
     get_historical_ohlc,
+    register_warm_pairs,
     PERIOD_MAP,
     SUPPORTED_CURRENCIES,
 )
@@ -70,6 +71,9 @@ async def live_rates(pairs: str = None):
             raise HTTPException(status_code=400, detail="Invalid pairs format. Use 'USDAUD,USDCAD'.")
     else:
         parsed = DEFAULT_PAIRS
+
+    # Register these pairs for proactive background warming
+    register_warm_pairs(parsed)
 
     try:
         rates = await asyncio.to_thread(get_rates, parsed)
