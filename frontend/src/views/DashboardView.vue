@@ -762,7 +762,7 @@ onMounted(async () => {
     if (result?.holdingsChanged) {
       _syncForexSubscriptions()
       portfolioStore.fetchHistory(portfolioStore.selectedPeriod, true)
-      loadFeedNews()
+      // News is cached for 30 min — do NOT re-fetch on every holdings refresh
     }
   }, PORTFOLIO_REFRESH_INTERVAL_MS)
 })

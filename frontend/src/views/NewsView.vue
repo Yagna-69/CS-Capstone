@@ -131,6 +131,10 @@
   </div>
 </template>
 
+<script>
+export default { name: 'NewsView' }
+</script>
+
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import NewsStoryCard from '@/components/NewsStoryCard.vue'
