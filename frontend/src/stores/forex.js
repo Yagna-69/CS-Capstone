@@ -9,7 +9,7 @@ import { forexApi } from '@/services/api'
  * request payload stays small regardless of how many currencies exist.
  */
 export const useForexStore = defineStore('forex', () => {
-  const REFRESH_INTERVAL_MS = 5_000
+  const REFRESH_INTERVAL_MS = 4_000
 
   const currencies  = ref([])
   const rates       = ref({})

@@ -11,9 +11,10 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 
-CACHE_TTL = 30         # seconds between live rate refreshes; frontend polls every 5s so
-                        # nearly every poll hits cache (~65ms). A background warmer (see
-                        # warm_active_pairs) refreshes before expiry to eliminate cold misses.
+CACHE_TTL = 10         # seconds between live rate refreshes. yfinance data lags ~60-75s
+                        # from market, so 10s TTL keeps displayed rates within ~70s of reality.
+                        # Frontend polls every 5s: poll 1 may hit yfinance (~110ms), poll 2
+                        # hits cache (~65ms). Background warmer pre-fetches before expiry.
 HISTORY_CACHE_TTL = 300  # seconds for historical data (OHLC, historical rates)
 
 # Shared thread pool for parallel yfinance calls in get_rates()
@@ -353,7 +354,7 @@ def warm_active_pairs() -> None:
     refresh_threshold = CACHE_TTL - 5  # start refreshing 5s before expiry
     stale = [
         (f, t) for f, t in _warm_pairs
-        if (now - _cache.get(f"{f}{t}", (None, 0))[1]) >= refresh_threshold
+        if (now - _cache.get(f"{f}{t}", (None, 0.0))[1]) >= refresh_threshold
     ]
     if stale:
         get_rates(stale)  # parallel fetch, updates _cache in place

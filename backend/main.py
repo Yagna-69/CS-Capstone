@@ -8,7 +8,7 @@ from config import settings
 from routes import api_router  # routes/ package — replaces the old routes.py
 
 POLL_INTERVAL_SECS  = 3   # check pending orders every N seconds
-WARM_INTERVAL_SECS  = 25  # proactively refresh forex cache before TTL expires (TTL=30s)
+WARM_INTERVAL_SECS  = 8   # proactively refresh forex cache before TTL expires (TTL=10s)
 
 
 def _process_pending_orders_sync():
