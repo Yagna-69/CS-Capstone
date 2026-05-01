@@ -114,7 +114,14 @@ export const useNewsStore = defineStore('news', () => {
   // ── Reddit cache ─────────────────────────────────────────────────────────
   const redditCache = ref({})  // { 'wsb' | 'economics': { posts, fetchedAt } }
 
-  async function fetchRedditPosts(subreddit, limit = 12) {
+  /**
+   * @param {string} subreddit  'wsb' | 'economics'
+   * @param {number} limit
+   * @param {Function} [fetchFn]  optional custom fetcher; defaults to backend proxy.
+   *   Pass a direct-browser fetch function to bypass the backend (needed on Cloud Run
+   *   where GCP IPs are blocked by Reddit).
+   */
+  async function fetchRedditPosts(subreddit, limit = 12, fetchFn = null) {
     const now    = Date.now()
     const cached = redditCache.value[subreddit]
     if (cached && (now - cached.fetchedAt) < REDDIT_CACHE_TTL_MS) {
@@ -133,23 +140,30 @@ export const useNewsStore = defineStore('news', () => {
     redditCache.value[inflightKey] = new Promise(r => { resolve = r })
 
     try {
-      const fetcher = subreddit === 'wsb'
-        ? () => newsApi.getWsbPosts(limit)
-        : () => newsApi.getEconomicsPosts(limit)
-      const { data } = await fetcher()
-      const posts = (data?.posts || []).map(p => ({
-        id:           p.id,
-        title:        p.title,
-        author:       p.author,
-        score:        p.score,
-        num_comments: p.num_comments,
-        time:         p.time,
-        url:          p.url,
-        thumbnail:    p.thumbnail    || null,
-        outbound_url: p.outbound_url || null,
-        flair:        p.flair        || '',
-        selftext:     p.selftext     || '',
-      }))
+      let posts
+      if (fetchFn) {
+        // Caller provides raw posts array directly (browser-direct path)
+        posts = await fetchFn()
+      } else {
+        // Default: backend proxy
+        const apiFetcher = subreddit === 'wsb'
+          ? () => newsApi.getWsbPosts(limit)
+          : () => newsApi.getEconomicsPosts(limit)
+        const { data } = await apiFetcher()
+        posts = (data?.posts || []).map(p => ({
+          id:           p.id,
+          title:        p.title,
+          author:       p.author,
+          score:        p.score,
+          num_comments: p.num_comments,
+          time:         p.time,
+          url:          p.url,
+          thumbnail:    p.thumbnail    || null,
+          outbound_url: p.outbound_url || null,
+          flair:        p.flair        || '',
+          selftext:     p.selftext     || '',
+        }))
+      }
       redditCache.value[subreddit] = { posts, fetchedAt: now }
       return posts.slice(0, limit)
     } catch (err) {
