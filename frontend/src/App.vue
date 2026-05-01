@@ -242,9 +242,12 @@ watch(
   }
 )
 
+// Start the rate pipeline immediately at setup time (before any child view mounts)
+// so rates are warm by the time dashboard/trading components read forexStore.getRate()
+forexStore.startPipeline()
+
 let tickerInterval = null
 onMounted(() => {
-  forexStore.startPipeline()
   document.addEventListener('pointerdown', onSearchPointerDownOutside, true)
 })
 onUnmounted(() => {

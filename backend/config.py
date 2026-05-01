@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Gemini API key — reserved for future AI insight feature
     gemini_api_key: str = ""
     newsapi_key: str = ""
+    # Resend API key for transactional emails (trade confirmations etc.)
+    resend_api_key: str = ""
+    # From address shown on outgoing emails — must be a verified domain in Resend
+    # Use onboarding@resend.dev for testing (works without domain verification)
+    email_from: str = "FXTrade <onboarding@resend.dev>"
 
     class Config:
         env_file = str(_BACKEND_DIR / ".env")

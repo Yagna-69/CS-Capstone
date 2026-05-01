@@ -159,24 +159,97 @@
           <!-- Order Type Row -->
           <div class="mb-4">
             <label class="text-xs text-gray-400 mb-1.5 block font-medium">Order Type</label>
-            <div class="relative">
-              <select v-model="orderType"
-                class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
-                <option value="Market">Market Order</option>
-                <option value="Limit">Limit Order</option>
-                <option value="Stop">Stop Order</option>
-                <option value="Stop-Limit">Stop-Limit Order</option>
-              </select>
-              <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
+            <div class="flex gap-2">
+              <button @click="orderType = 'Market'" type="button" title="Market Order"
+                :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Market' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </button>
+              <button @click="orderType = 'Limit'" type="button" title="Limit Order"
+                :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Limit' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-4 4 4 4-4 4 4M3 12h18"/>
+                </svg>
+              </button>
+              <button @click="orderType = 'Stop'" type="button" title="Stop Order"
+                :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Stop' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-8 4 4 4-8 4 8M3 21h18"/>
+                </svg>
+              </button>
+              <button @click="orderType = 'Stop-Limit'" type="button" title="Stop-Limit Order"
+                :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Stop-Limit' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-8 4 4 4-8 4 8M3 12h18M3 21h18"/>
+                </svg>
+              </button>
             </div>
-            <p class="text-xs text-gray-500 mt-1.5 italic">
-              {{ orderType === 'Market' ? 'Execute immediately at current price' : 
-                 orderType === 'Limit' ? 'Execute at specified price or better' :
-                 orderType === 'Stop' ? 'Execute when price reaches stop level' :
-                 'Execute at limit price after stop is triggered' }}
+            <p class="text-xs mt-2 font-semibold text-white">
+              {{ orderType === 'Market' ? 'Market Order' : orderType === 'Limit' ? 'Limit Order' : orderType === 'Stop' ? 'Stop Order' : 'Stop-Limit Order' }}
+              <span class="font-normal text-gray-500 ml-1">—
+                {{ orderType === 'Market' ? 'fills immediately at current price' :
+                   orderType === 'Limit'  ? 'fills when rate reaches your target' :
+                   orderType === 'Stop'   ? 'triggers when rate hits your stop' :
+                                            'stop triggers, fills up to limit price' }}
+              </span>
             </p>
+          </div>
+
+          <!-- Target / Limit price inputs (non-market only) -->
+          <div v-if="orderType !== 'Market'" class="mb-4 space-y-3">
+            <!-- Target / Stop price -->
+            <div>
+              <label class="text-xs text-gray-400 mb-1.5 block font-medium">
+                {{ orderType === 'Stop-Limit' ? 'Stop Price' : orderType === 'Limit' ? 'Target Price (fill at or below)' : 'Stop Price (fill at or above)' }}
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="targetPrice"
+                  type="number" min="0.000001" step="0.0001" placeholder="0.000000"
+                  class="w-full px-3 py-2.5 bg-bg-primary border-2 border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary transition-all font-mono"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">{{ toCurrency }}</span>
+              </div>
+              <p v-if="currentRate" class="text-xs text-gray-600 mt-1 font-mono">
+                Live rate: <span class="text-gray-400">{{ currentRate.toFixed(6) }}</span>
+                <span v-if="targetPrice && orderType === 'Limit'" :class="targetPrice < currentRate ? 'text-green-500' : 'text-yellow-500'" class="ml-2">
+                  {{ targetPrice < currentRate ? '↓ below market' : '↑ above market — will fill immediately' }}
+                </span>
+                <span v-if="targetPrice && orderType === 'Stop'" :class="targetPrice > currentRate ? 'text-green-500' : 'text-yellow-500'" class="ml-2">
+                  {{ targetPrice > currentRate ? '↑ above market' : '↓ below market — will fill immediately' }}
+                </span>
+              </p>
+            </div>
+
+            <!-- Limit price (Stop-Limit only) -->
+            <div v-if="orderType === 'Stop-Limit'">
+              <label class="text-xs text-gray-400 mb-1.5 block font-medium">
+                Limit Price <span class="text-gray-600">(max rate to accept)</span>
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="limitPrice"
+                  type="number" min="0.000001" step="0.0001" placeholder="0.000000"
+                  class="w-full px-3 py-2.5 bg-bg-primary border-2 border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary transition-all font-mono"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">{{ toCurrency }}</span>
+              </div>
+              <p class="text-xs text-gray-600 mt-1">Must be ≥ stop price</p>
+            </div>
+
+            <!-- Plain-English order preview -->
+            <div v-if="exchangeAmount && targetPrice" class="rounded-lg bg-bg-secondary border border-gray-700 px-3 py-2 text-xs text-gray-400 leading-relaxed">
+              <template v-if="orderType === 'Limit'">
+                Buy <span class="text-white font-semibold">{{ exchangeAmount }} {{ fromCurrency }}</span> worth of <span class="text-white font-semibold">{{ toCurrency }}</span> once the rate drops to <span class="text-blue-300 font-mono">{{ targetPrice }}</span> or lower.
+              </template>
+              <template v-else-if="orderType === 'Stop'">
+                Sell <span class="text-white font-semibold">{{ exchangeAmount }} {{ fromCurrency }}</span> into <span class="text-white font-semibold">{{ toCurrency }}</span> once the rate rises to <span class="text-orange-300 font-mono">{{ targetPrice }}</span> or higher.
+              </template>
+              <template v-else-if="orderType === 'Stop-Limit' && limitPrice">
+                Triggered at <span class="text-purple-300 font-mono">{{ targetPrice }}</span> — fills <span class="text-white font-semibold">{{ exchangeAmount }} {{ fromCurrency }}</span> only if rate ≤ <span class="text-purple-200 font-mono">{{ limitPrice }}</span>.
+              </template>
+            </div>
           </div>
 
           <!-- Currency Pair (Locked to Chart) -->
@@ -223,38 +296,39 @@
             </div>
           </div>
 
-          <!-- Rate & Preview -->
-          <div v-if="currentRate" class="bg-bg-primary rounded-lg px-3 py-2 mb-3 space-y-1 text-xs">
-            <div class="flex justify-between">
-              <span class="text-gray-400">Rate</span>
-              <span class="text-primary font-mono">1 {{ fromCurrency }} = {{ currentRate.toFixed(6) }} {{ toCurrency }}</span>
+          <!-- Rate & Preview + Execute — wrapped relative so feedback overlays it -->
+          <div class="relative rounded-xl">
+            <div v-if="currentRate" class="relative z-0 bg-bg-primary rounded-lg px-3 py-2 mb-3 space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span class="text-gray-400">Rate</span>
+                <span class="text-primary font-mono">1 {{ fromCurrency }} = {{ currentRate.toFixed(6) }} {{ toCurrency }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Spread</span>
+                <span class="text-gray-300 font-mono">0.0002</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Fee</span>
+                <span class="text-green-400 font-semibold">0%</span>
+              </div>
+              <div v-if="receiveAmount" class="flex justify-between pt-1 border-t border-gray-800">
+                <span class="text-gray-400">You receive</span>
+                <span class="text-green-400 font-mono font-bold">{{ receiveAmount.toFixed(6) }} {{ toCurrency }}</span>
+              </div>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-400">Spread</span>
-              <span class="text-gray-300 font-mono">0.0002</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-400">Fee</span>
-              <span class="text-green-400 font-semibold">0%</span>
-            </div>
-            <div v-if="receiveAmount" class="flex justify-between pt-1 border-t border-gray-800">
-              <span class="text-gray-400">You receive</span>
-              <span class="text-green-400 font-mono font-bold">{{ receiveAmount.toFixed(6) }} {{ toCurrency }}</span>
-            </div>
+            <div v-else-if="rateLoading" class="text-gray-500 text-xs mb-3">Fetching rate...</div>
+            <div v-else-if="rateError" class="text-red-400 text-xs mb-3">{{ rateError }}</div>
+
+            <TradeFeedbackAction
+              v-model:feedback="tradeFeedback"
+              :disabled="orderType === 'Market' ? (tradeLoading || !currentRate || !exchangeAmount) : (orderLoading || !exchangeAmount || !targetPrice)"
+              :loading="orderType === 'Market' ? tradeLoading : orderLoading"
+              :loading-label="orderType === 'Market' ? 'Processing...' : 'Placing...'"
+              :button-label="orderType === 'Market' ? 'Execute Trade' : 'Place Order'"
+              button-class="w-full py-2 bg-primary text-black rounded-full text-sm font-bold hover:opacity-80 transition disabled:opacity-50"
+              @execute="orderType === 'Market' ? executeTrade() : placeOrder()"
+            />
           </div>
-          <div v-else-if="rateLoading" class="text-gray-500 text-xs mb-3">Fetching rate...</div>
-          <div v-else-if="rateError" class="text-red-400 text-xs mb-3">{{ rateError }}</div>
-
-          <p v-if="tradeError" class="text-red-400 text-xs mb-2">{{ tradeError }}</p>
-          <p v-if="tradeSuccess" class="text-green-400 text-xs mb-2">{{ tradeSuccess }}</p>
-
-          <button
-            @click="executeTrade"
-            :disabled="tradeLoading || !currentRate || !exchangeAmount"
-            class="w-full py-2 bg-primary text-black rounded-full text-sm font-bold hover:opacity-80 transition disabled:opacity-50"
-          >
-            {{ tradeLoading ? 'Processing...' : 'Execute Trade' }}
-          </button>
         </div>
       </div>
     </div>
@@ -286,6 +360,136 @@
             </div>
           </div>
         </a>
+      </div>
+    </div>
+
+    <!-- Pending Orders -->
+    <div class="glass p-6 rounded-xl">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-bold text-white">Orders</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Limit, Stop, and Stop-Limit orders waiting to fill</p>
+        </div>
+        <button @click="loadOrders" class="text-sm text-primary hover:text-primary/80 font-semibold transition">Refresh</button>
+      </div>
+
+      <div v-if="ordersLoading" class="space-y-3">
+        <div class="h-24 bg-bg-primary rounded-xl animate-pulse"></div>
+        <div class="h-24 bg-bg-primary rounded-xl animate-pulse"></div>
+      </div>
+
+      <div v-else-if="pendingOrders.length === 0" class="py-10 text-center">
+        <svg class="w-12 h-12 text-gray-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <p class="text-gray-500 text-sm">No orders yet</p>
+        <p class="text-gray-600 text-xs mt-1">Place a Limit, Stop, or Stop-Limit order to see it here</p>
+      </div>
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="order in pendingOrders"
+          :key="order.order_id"
+          class="rounded-xl border bg-bg-primary overflow-hidden"
+          :class="order.status === 'PENDING'
+            ? 'border-gray-700'
+            : order.status === 'FILLED'
+              ? 'border-primary/25'
+              : 'border-gray-800 opacity-60'"
+        >
+          <!-- Top accent line for pending orders -->
+          <div v-if="order.status === 'PENDING'" class="h-0.5 w-full bg-yellow-500/60"></div>
+          <div v-else-if="order.status === 'FILLED'" class="h-0.5 w-full bg-primary"></div>
+
+          <div class="px-4 py-3">
+            <!-- Header row: type badge + pair + status + cancel -->
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- Order type badge -->
+                <span
+                  class="text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border"
+                  :class="order.order_type === 'Limit'
+                    ? 'text-blue-300 border-blue-500/40 bg-blue-500/10'
+                    : order.order_type === 'Stop'
+                      ? 'text-orange-300 border-orange-500/40 bg-orange-500/10'
+                      : 'text-purple-300 border-purple-500/40 bg-purple-500/10'"
+                >{{ order.order_type }}</span>
+
+                <!-- Pair -->
+                <span class="text-white font-bold text-sm">{{ order.from_currency }}/{{ order.to_currency }}</span>
+
+                <!-- Status -->
+                <span
+                  class="text-xs font-semibold uppercase tracking-wider"
+                  :class="order.status === 'PENDING' ? 'text-yellow-400'
+                    : order.status === 'FILLED' ? 'text-primary'
+                    : 'text-gray-500'"
+                >{{ order.status }}</span>
+              </div>
+
+              <!-- Cancel button (PENDING only) -->
+              <button
+                v-if="order.status === 'PENDING'"
+                class="shrink-0 text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-500/40 rounded-lg px-2 py-1 transition font-semibold"
+                @click="cancelOrder(order.order_id)"
+              >Cancel</button>
+            </div>
+
+            <!-- Order specifics grid -->
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+              <!-- Amount -->
+              <div>
+                <span class="text-gray-500 block">Amount</span>
+                <span class="text-white font-mono font-semibold">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span>
+              </div>
+
+              <!-- Order type-specific condition -->
+              <div v-if="order.order_type === 'Limit'">
+                <span class="text-gray-500 block">Fill when rate ≤</span>
+                <span class="text-blue-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
+              </div>
+              <div v-else-if="order.order_type === 'Stop'">
+                <span class="text-gray-500 block">Fill when rate ≥</span>
+                <span class="text-orange-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
+              </div>
+              <div v-else-if="order.order_type === 'Stop-Limit'">
+                <span class="text-gray-500 block">Stop triggers at ≥</span>
+                <span class="text-purple-300 font-mono font-semibold">{{ Number(order.target_price).toFixed(6) }} {{ order.to_currency }}</span>
+              </div>
+
+              <!-- Limit price (Stop-Limit only) -->
+              <div v-if="order.order_type === 'Stop-Limit' && order.limit_price">
+                <span class="text-gray-500 block">Fills only up to</span>
+                <span class="text-purple-200 font-mono font-semibold">{{ Number(order.limit_price).toFixed(6) }} {{ order.to_currency }}</span>
+              </div>
+
+              <!-- Placed date -->
+              <div>
+                <span class="text-gray-500 block">Placed</span>
+                <span class="text-gray-400">{{ formatDate(order.created_at) }}</span>
+              </div>
+
+              <!-- Filled date (if filled) -->
+              <div v-if="order.status === 'FILLED' && order.filled_at">
+                <span class="text-gray-500 block">Filled</span>
+                <span class="text-primary">{{ formatDate(order.filled_at) }}</span>
+              </div>
+            </div>
+
+            <!-- Explanation row for pending -->
+            <div v-if="order.status === 'PENDING'" class="mt-3 pt-2.5 border-t border-gray-800 text-xs text-gray-600 leading-relaxed">
+              <template v-if="order.order_type === 'Limit'">
+                Will automatically buy <span class="text-gray-400">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span> worth of <span class="text-gray-400">{{ order.to_currency }}</span> once the rate drops to <span class="text-blue-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span> or lower.
+              </template>
+              <template v-else-if="order.order_type === 'Stop'">
+                Will automatically sell <span class="text-gray-400">{{ Number(order.amount).toFixed(4) }} {{ order.from_currency }}</span> once the rate reaches <span class="text-orange-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span> or higher.
+              </template>
+              <template v-else-if="order.order_type === 'Stop-Limit'">
+                Triggered when rate hits <span class="text-purple-400 font-mono">{{ Number(order.target_price).toFixed(6) }}</span>, but only fills if rate is still ≤ <span class="text-purple-300 font-mono">{{ Number(order.limit_price).toFixed(6) }}</span>.
+              </template>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -493,27 +697,94 @@
         <div class="flex-1 overflow-y-auto p-4">
           <!-- Exchange Tab -->
           <div v-if="activeTab === 'exchange'" class="space-y-4">
-            <!-- Order Type Row (Mobile) -->
+            <!-- Order Type Row (Fullscreen) -->
             <div>
               <label class="text-xs text-gray-400 mb-1.5 block font-medium">Order Type</label>
-              <div class="relative">
-                <select v-model="orderType"
-                  class="w-full px-3 py-2.5 bg-gradient-to-br from-bg-primary to-bg-secondary border-2 border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all appearance-none cursor-pointer hover:border-gray-600 font-semibold">
-                  <option value="Market">Market Order</option>
-                  <option value="Limit">Limit Order</option>
-                  <option value="Stop">Stop Order</option>
-                  <option value="Stop-Limit">Stop-Limit Order</option>
-                </select>
-                <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
+              <div class="flex gap-2">
+                <button @click="orderType = 'Market'" type="button" title="Market Order"
+                  :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Market' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </button>
+                <button @click="orderType = 'Limit'" type="button" title="Limit Order"
+                  :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Limit' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-4 4 4 4-4 4 4M3 12h18"/>
+                  </svg>
+                </button>
+                <button @click="orderType = 'Stop'" type="button" title="Stop Order"
+                  :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Stop' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-8 4 4 4-8 4 8M3 21h18"/>
+                  </svg>
+                </button>
+                <button @click="orderType = 'Stop-Limit'" type="button" title="Stop-Limit Order"
+                  :class="['flex-1 flex items-center justify-center p-3 rounded-lg border-2 transition-all', orderType === 'Stop-Limit' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-700 bg-bg-primary text-gray-400 hover:border-gray-600 hover:text-white']">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l4-8 4 4 4-8 4 8M3 12h18M3 21h18"/>
+                  </svg>
+                </button>
               </div>
-              <p class="text-xs text-gray-500 mt-1.5 italic">
-                {{ orderType === 'Market' ? 'Execute immediately at current price' : 
-                   orderType === 'Limit' ? 'Execute at specified price or better' :
-                   orderType === 'Stop' ? 'Execute when price reaches stop level' :
-                   'Execute at limit price after stop is triggered' }}
+              <p class="text-xs mt-2 font-semibold text-white">
+                {{ orderType === 'Market' ? 'Market Order' : orderType === 'Limit' ? 'Limit Order' : orderType === 'Stop' ? 'Stop Order' : 'Stop-Limit Order' }}
+                <span class="font-normal text-gray-500 ml-1">—
+                  {{ orderType === 'Market' ? 'fills immediately at current price' :
+                     orderType === 'Limit'  ? 'fills when rate reaches your target' :
+                     orderType === 'Stop'   ? 'triggers when rate hits your stop' :
+                                              'stop triggers, fills up to limit price' }}
+                </span>
               </p>
+            </div>
+
+            <!-- Target / Limit price inputs (fullscreen, non-market) -->
+            <div v-if="orderType !== 'Market'" class="space-y-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1.5 block font-medium">
+                  {{ orderType === 'Stop-Limit' ? 'Stop Price' : orderType === 'Limit' ? 'Target Price (fill at or below)' : 'Stop Price (fill at or above)' }}
+                </label>
+                <div class="relative">
+                  <input
+                    v-model.number="targetPrice"
+                    type="number" min="0.000001" step="0.0001" placeholder="0.000000"
+                    class="w-full px-3 py-2.5 bg-bg-primary border-2 border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary transition-all font-mono"
+                  />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">{{ toCurrency }}</span>
+                </div>
+                <p v-if="currentRate" class="text-xs text-gray-600 mt-1 font-mono">
+                  Live: <span class="text-gray-400">{{ currentRate.toFixed(6) }}</span>
+                  <span v-if="targetPrice && orderType === 'Limit'" :class="targetPrice < currentRate ? 'text-green-500' : 'text-yellow-500'" class="ml-2">
+                    {{ targetPrice < currentRate ? '↓ below market' : '↑ will fill immediately' }}
+                  </span>
+                  <span v-if="targetPrice && orderType === 'Stop'" :class="targetPrice > currentRate ? 'text-green-500' : 'text-yellow-500'" class="ml-2">
+                    {{ targetPrice > currentRate ? '↑ above market' : '↓ will fill immediately' }}
+                  </span>
+                </p>
+              </div>
+              <div v-if="orderType === 'Stop-Limit'">
+                <label class="text-xs text-gray-400 mb-1.5 block font-medium">Limit Price <span class="text-gray-600">(max rate)</span></label>
+                <div class="relative">
+                  <input
+                    v-model.number="limitPrice"
+                    type="number" min="0.000001" step="0.0001" placeholder="0.000000"
+                    class="w-full px-3 py-2.5 bg-bg-primary border-2 border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary transition-all font-mono"
+                  />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">{{ toCurrency }}</span>
+                </div>
+                <p class="text-xs text-gray-600 mt-1">Must be ≥ stop price</p>
+              </div>
+              <!-- Plain-English preview -->
+              <div v-if="exchangeAmount && targetPrice" class="rounded-lg bg-bg-primary border border-gray-800 px-3 py-2 text-xs text-gray-400 leading-relaxed">
+                <template v-if="orderType === 'Limit'">
+                  Buy <span class="text-white font-semibold">{{ exchangeAmount }} {{ fromCurrency }}</span> worth of <span class="text-white font-semibold">{{ toCurrency }}</span> when rate ≤ <span class="text-blue-300 font-mono">{{ targetPrice }}</span>.
+                </template>
+                <template v-else-if="orderType === 'Stop'">
+                  Sell <span class="text-white font-semibold">{{ exchangeAmount }} {{ fromCurrency }}</span> into <span class="text-white font-semibold">{{ toCurrency }}</span> when rate ≥ <span class="text-orange-300 font-mono">{{ targetPrice }}</span>.
+                </template>
+                <template v-else-if="orderType === 'Stop-Limit' && limitPrice">
+                  Triggered at <span class="text-purple-300 font-mono">{{ targetPrice }}</span>, fills only if rate ≤ <span class="text-purple-200 font-mono">{{ limitPrice }}</span>.
+                </template>
+              </div>
             </div>
 
             <!-- Currency Pair (Locked to Chart) -->
@@ -555,44 +826,39 @@
               </div>
             </div>
 
-            <!-- Rate & Preview -->
-            <div v-if="currentRate" class="bg-bg-primary rounded-lg px-3 py-2 space-y-1 text-xs">
-              <div class="flex justify-between">
-                <span class="text-gray-400">Rate</span>
-                <span class="text-primary font-mono">1 {{ fromCurrency }} = {{ currentRate.toFixed(6) }} {{ toCurrency }}</span>
+            <!-- Rate & Preview + Execute — wrapped relative so feedback overlays it -->
+            <div class="relative rounded-xl">
+              <div v-if="currentRate" class="relative z-0 bg-bg-primary rounded-lg px-3 py-2 mb-3 space-y-1 text-xs">
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Rate</span>
+                  <span class="text-primary font-mono">1 {{ fromCurrency }} = {{ currentRate.toFixed(6) }} {{ toCurrency }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Spread</span>
+                  <span class="text-gray-300 font-mono">0.0002</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Fee</span>
+                  <span class="text-green-400 font-semibold">0%</span>
+                </div>
+                <div v-if="receiveAmount" class="flex justify-between pt-1 border-t border-gray-800">
+                  <span class="text-gray-400">You receive</span>
+                  <span class="text-green-400 font-mono font-bold">{{ receiveAmount.toFixed(6) }} {{ toCurrency }}</span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-400">Spread</span>
-                <span class="text-gray-300 font-mono">0.0002</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-400">Fee</span>
-                <span class="text-green-400 font-semibold">0%</span>
-              </div>
-              <div v-if="receiveAmount" class="flex justify-between pt-1 border-t border-gray-800">
-                <span class="text-gray-400">You receive</span>
-                <span class="text-green-400 font-mono font-bold">{{ receiveAmount.toFixed(6) }} {{ toCurrency }}</span>
-              </div>
-            </div>
-            <div v-else-if="rateLoading" class="text-gray-500 text-xs">Fetching rate...</div>
-            <div v-else-if="rateError" class="text-red-400 text-xs">{{ rateError }}</div>
+              <div v-else-if="rateLoading" class="text-gray-500 text-xs mb-3">Fetching rate...</div>
+              <div v-else-if="rateError" class="text-red-400 text-xs mb-3">{{ rateError }}</div>
 
-            <!-- Error/Success Messages -->
-            <div v-if="tradeError" class="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p class="text-sm text-red-400">{{ tradeError }}</p>
+              <TradeFeedbackAction
+                v-model:feedback="tradeFeedback"
+                :disabled="orderType === 'Market' ? (tradeLoading || !currentRate || !exchangeAmount) : (orderLoading || !exchangeAmount || !targetPrice)"
+                :loading="orderType === 'Market' ? tradeLoading : orderLoading"
+                :loading-label="orderType === 'Market' ? 'Processing...' : 'Placing...'"
+                :button-label="orderType === 'Market' ? 'Execute Trade' : 'Place Order'"
+                button-class="w-full py-3 rounded-lg bg-primary text-black font-bold transition-all shadow-lg hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                @execute="orderType === 'Market' ? executeTrade() : placeOrder()"
+              />
             </div>
-            <div v-if="tradeSuccess" class="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-              <p class="text-sm text-green-400">{{ tradeSuccess }}</p>
-            </div>
-
-            <!-- Execute Trade Button -->
-            <button
-              @click="executeTrade"
-              :disabled="tradeLoading || !currentRate || !exchangeAmount"
-              class="w-full py-3 rounded-lg bg-primary text-black font-bold transition-all shadow-lg hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {{ tradeLoading ? 'Processing...' : 'Execute Trade' }}
-            </button>
           </div>
 
           <!-- News Tab -->
@@ -616,15 +882,18 @@
       </div>
     </div>
   </Teleport>
+
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { tradeApi } from '@/services/api'
+import { tradeApi, ordersApi } from '@/services/api'
 import { usePortfolioStore } from '@/stores/portfolio'
 import { useForexStore } from '@/stores/forex'
 import { useNewsStore } from '@/stores/news'
+import { useAuthStore } from '@/stores/auth'
+import TradeFeedbackAction from '@/components/TradeFeedbackAction.vue'
 import { createChart } from 'lightweight-charts'
 
 const route = useRoute()
@@ -632,6 +901,17 @@ const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
 const newsStore = useNewsStore()
+const authStore = useAuthStore()
+
+// Respect the "Trade Confirmations" notification preference
+function tradeConfirmationsEnabled() {
+  try {
+    const key = `fxtrade_notif_local_${authStore.userId || 'anon'}`
+    const local = JSON.parse(localStorage.getItem(key) || '{}')
+    // Default true if not yet saved
+    return local.tradeConfirmations !== false
+  } catch { return true }
+}
 
 // Wishlist functionality
 const isWishlisted = computed(() => portfolioStore.isInWishlist(chartPair.value))
@@ -675,8 +955,17 @@ const chartPair = ref('EUR/USD')
 const chartHistoryPeriod = ref('3mo')
 const chartType = ref('candlestick')
 const activeIndicators = ref([])  // Array of active indicator IDs
-const currentPrice = ref(0)
-const priceChange = ref(0)
+const _openPrice = ref(0)  // First candle close for % change denominator
+
+// currentPrice updates live from forexStore every 4s without reloading the chart
+const currentPrice = computed(() => {
+  const [from, to] = chartPair.value.split('/')
+  return forexStore.getRate(from, to) || _openPrice.value || 0
+})
+const priceChange = computed(() => {
+  if (!_openPrice.value || !currentPrice.value) return 0
+  return ((currentPrice.value - _openPrice.value) / _openPrice.value) * 100
+})
 const chartLoading = ref(false)
 const chartError = ref('')
 const isFullscreen = ref(false)
@@ -980,19 +1269,17 @@ async function loadChartData(isInitialLoad = false) {
       const to = candles[candles.length - 1].time
       timeScale.setVisibleRange({ from, to })
     }
-    
-    const latest = candles[candles.length - 1]
-    const prev = candles[candles.length - 2]
-    currentPrice.value = latest.close
-    priceChange.value =
-      prev && prev.close
-        ? ((latest.close - prev.close) / prev.close) * 100
-        : 0
+
+    // Store the period-open price so priceChange% is meaningful
+    _openPrice.value = candles[0]?.close || 0
+
+    // Push the live rate as the latest tick on the current candle so the
+    // chart reflects the real-time price without a full reload
+    _pushLiveTick(candles)
   } catch (e) {
     if (isInitialLoad) {
       chartError.value = e.response?.data?.detail || 'Could not load chart data.'
-      currentPrice.value = 0
-      priceChange.value = 0
+      _openPrice.value = 0
     }
   } finally {
     if (isInitialLoad) {
@@ -1003,6 +1290,36 @@ async function loadChartData(isInitialLoad = false) {
 
 function updateChartPair() {
   loadChartData(true) // Initial load when pair changes
+}
+
+/**
+ * Push the current live rate as an update to the latest candle.
+ * lightweight-charts `update()` is O(1) — no full re-render.
+ * We use floor(now / interval_seconds) as the candle bucket so the
+ * tick lands on the correct bar.
+ */
+function _pushLiveTick(candles) {
+  const liveRate = currentPrice.value
+  if (!liveRate || !candles || candles.length === 0) return
+
+  const latest = candles[candles.length - 1]
+  const tick = {
+    time:  latest.time,
+    open:  latest.open,
+    high:  Math.max(latest.high, liveRate),
+    low:   Math.min(latest.low,  liveRate),
+    close: liveRate,
+  }
+
+  try {
+    if (candlestickSeries) candlestickSeries.update(tick)
+    const lineTick = { time: latest.time, value: liveRate }
+    if (lineSeries)     lineSeries.update(lineTick)
+    if (areaSeries)     areaSeries.update(lineTick)
+    if (baselineSeries) baselineSeries.update(lineTick)
+  } catch {
+    // Silently ignore if chart was destroyed mid-update
+  }
 }
 
 function selectChartType(type) {
@@ -1274,25 +1591,117 @@ async function loadRelatedNews() {
 const activeTab = ref('exchange')
 
 // ── Exchange form ─────────────────────────────────────────────────────────
-const orderType = ref('Market')
+const orderType   = ref('Market')
+const targetPrice = ref(null)
+const limitPrice  = ref(null)
 const fromCurrency   = ref('USD')
 const toCurrency     = ref('AUD')
 const exchangeAmount = ref(null)
-const currentRate    = ref(null)
+// currentRate is driven reactively by forexStore — no separate polling needed
+const currentRate = computed(() => {
+  if (fromCurrency.value === toCurrency.value) return null
+  return forexStore.getRate(fromCurrency.value, toCurrency.value) ?? null
+})
 const receiveAmount  = ref(null)
-const rateLoading    = ref(false)
+const rateLoading    = computed(() => !currentRate.value && fromCurrency.value !== toCurrency.value && !forexStore.error)
 const rateError      = ref('')
 const tradeLoading   = ref(false)
-const tradeError     = ref('')
-const tradeSuccess   = ref('')
+
+/** Inline trade result: replaces Execute Trade until OK ({ message, variant }) */
+const tradeFeedback = ref(null)
+
+function showTradeFeedback(message, variant = 'success') {
+  // Skip success card if the user turned off trade confirmations
+  if (variant === 'success' && !tradeConfirmationsEnabled()) return
+  tradeFeedback.value = { message, variant }
+}
+
+function formatApiDetail(detail, fallback) {
+  if (detail == null || detail === '') return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((x) => (x && typeof x === 'object' && x.msg ? x.msg : String(x)))
+      .join(' ')
+  }
+  return fallback
+}
+
+// ── Pending orders ────────────────────────────────────────────────────────
+const pendingOrders  = ref([])
+const ordersLoading  = ref(false)
+const orderLoading   = ref(false)
+
+async function loadOrders() {
+  ordersLoading.value = true
+  try {
+    const { data } = await ordersApi.list()
+    pendingOrders.value = data.orders || []
+  } catch {
+    // silently ignore
+  } finally {
+    ordersLoading.value = false
+  }
+}
+
+async function placeOrder() {
+  if (!exchangeAmount.value || exchangeAmount.value <= 0) {
+    showTradeFeedback('Enter a positive amount.', 'error')
+    return
+  }
+  if (!targetPrice.value || targetPrice.value <= 0) {
+    showTradeFeedback('Enter a valid target price.', 'error')
+    return
+  }
+  if (orderType.value === 'Stop-Limit') {
+    if (!limitPrice.value || limitPrice.value <= 0) {
+      showTradeFeedback('Enter a valid limit price.', 'error')
+      return
+    }
+    if (limitPrice.value < targetPrice.value) {
+      showTradeFeedback('Limit price must be ≥ stop price.', 'error')
+      return
+    }
+  }
+  orderLoading.value = true
+  try {
+    await ordersApi.place({
+      from_currency: fromCurrency.value,
+      to_currency:   toCurrency.value,
+      amount:        exchangeAmount.value,
+      order_type:    orderType.value,
+      target_price:  targetPrice.value,
+      limit_price:   orderType.value === 'Stop-Limit' ? limitPrice.value : null,
+    })
+    showTradeFeedback(
+      `${orderType.value} order placed: ${exchangeAmount.value} ${fromCurrency.value} at target ${targetPrice.value} ${toCurrency.value}. It will fill automatically when the rate is hit.`,
+      'success'
+    )
+    exchangeAmount.value = null
+    targetPrice.value    = null
+    limitPrice.value     = null
+    await loadOrders()
+  } catch (e) {
+    showTradeFeedback(formatApiDetail(e.response?.data?.detail, 'Could not place order.'), 'error')
+  } finally {
+    orderLoading.value = false
+  }
+}
+
+async function cancelOrder(orderId) {
+  try {
+    await ordersApi.cancel(orderId)
+    await loadOrders()
+  } catch {
+    // silently ignore
+  }
+}
 
 // ── Send form ─────────────────────────────────────────────────────────────
 const transferEmail    = ref('')
 const transferCurrency = ref('USD')
 const transferAmount   = ref(null)
 const transferLoading  = ref(false)
-const transferError    = ref('')
-const transferSuccess  = ref('')
 
 // ── History ───────────────────────────────────────────────────────────────
 const transactions   = ref([])
@@ -1309,25 +1718,16 @@ const exchangeFromBalance = computed(() => getBalance(fromCurrency.value))
 const transferFromBalance = computed(() => getBalance(transferCurrency.value))
 
 // ── Exchange logic ────────────────────────────────────────────────────────
-async function fetchRate() {
+// currentRate is a computed from forexStore — no direct API call needed.
+// This stub exists so callers (syncCurrenciesFromChart etc.) don't need refactoring.
+function fetchRate() {
   if (fromCurrency.value === toCurrency.value) {
-    currentRate.value   = null
-    receiveAmount.value = null
     rateError.value     = 'Cannot exchange a currency for itself.'
+    receiveAmount.value = null
     return
   }
-  rateError.value   = ''
-  rateLoading.value = true
-  try {
-    const { data } = await tradeApi.getRate(fromCurrency.value, toCurrency.value)
-    currentRate.value = data.rate
-    computeReceive()
-  } catch {
-    // Keep previous rate on error (don't set to null)
-    rateError.value = 'Could not fetch rate.'
-  } finally {
-    rateLoading.value = false
-  }
+  rateError.value = ''
+  computeReceive()
 }
 
 // Sync currencies from chart pair
@@ -1338,11 +1738,9 @@ function syncCurrenciesFromChart() {
   fetchRate()
 }
 
-const CHART_REFRESH_INTERVAL_MS = 4_000  // Reload chart OHLC every 5s (configurable)
-const RATE_REFRESH_INTERVAL_MS = 4_000   // Re-fetch exchange rate every 5s (configurable)
+const CHART_REFRESH_INTERVAL_MS = 60_000  // Reload chart OHLC every 60s (candles don't change faster)
 
 let chartRefreshTimer = null
-let rateRefreshTimer = null
 
 // Initialize chart and watches on mount
 onMounted(async () => {
@@ -1353,13 +1751,13 @@ onMounted(async () => {
   await initChart()
   await portfolioStore.fetchHoldings()
   loadHistory()
+  loadOrders()
   fetchRate()
 
   // Initial chart data load
   await loadChartData(true)
 
   chartRefreshTimer = setInterval(() => loadChartData(false), CHART_REFRESH_INTERVAL_MS)
-  rateRefreshTimer = setInterval(() => fetchRate(), RATE_REFRESH_INTERVAL_MS)
   
   // Watch for query parameter changes from wishlist navigation
   watch(() => route.query.pair, (newPair) => {
@@ -1379,6 +1777,41 @@ onMounted(async () => {
   
   // Load initial news on mount
   loadRelatedNews()
+
+  // Reset target/limit price when switching back to Market
+  watch(orderType, (val) => {
+    if (val === 'Market') {
+      targetPrice.value = null
+      limitPrice.value  = null
+    }
+  })
+
+  // Subscribe to the active trading pair (trade form) so the rate poller covers it.
+  watch(
+    [fromCurrency, toCurrency],
+    ([newFrom, newTo], [oldFrom, oldTo]) => {
+      if (oldFrom && oldTo) forexStore.unsubscribePair(oldFrom, oldTo)
+      if (newFrom && newTo && newFrom !== newTo) forexStore.subscribePair(newFrom, newTo)
+    },
+    { immediate: true }
+  )
+
+  // Also subscribe the chart pair so the live tick watcher gets updates even
+  // when the chart pair differs from the trade form pair.
+  watch(
+    chartPair,
+    (newPair, oldPair) => {
+      if (oldPair) {
+        const [f, t] = oldPair.split('/')
+        if (f && t) forexStore.unsubscribePair(f, t)
+      }
+      if (newPair) {
+        const [f, t] = newPair.split('/')
+        if (f && t && f !== t) forexStore.subscribePair(f, t)
+      }
+    },
+    { immediate: true }
+  )
 })
 
 function computeReceive() {
@@ -1387,26 +1820,52 @@ function computeReceive() {
     : null
 }
 
+// Keep receiveAmount in sync whenever rate or amount changes
+watch([currentRate, exchangeAmount], computeReceive)
+
+// Push a live tick to the chart every time forexStore delivers a fresh rate
+watch(currentPrice, (liveRate) => {
+  if (!liveRate) return
+  const [from, to] = chartPair.value.split('/')
+  const cached = forexStore.getCachedPairHistory(from, to, chartHistoryPeriod.value)
+  if (cached?.candles?.length) _pushLiveTick(cached.candles)
+})
+
 // Swap pair direction and navigate to inverse pair
 function swapPairDirection() {
   router.push(`/trading?pair=${toCurrency.value}/${fromCurrency.value}`)
 }
 
 async function executeTrade() {
-  tradeError.value   = ''
-  tradeSuccess.value = ''
-  if (!exchangeAmount.value || exchangeAmount.value <= 0) { tradeError.value = 'Enter a positive amount.'; return }
-  if (fromCurrency.value === toCurrency.value) { tradeError.value = 'Cannot exchange a currency for itself.'; return }
+  if (!exchangeAmount.value || exchangeAmount.value <= 0) {
+    showTradeFeedback('Enter a positive amount.', 'error')
+    return
+  }
+  if (fromCurrency.value === toCurrency.value) {
+    showTradeFeedback('Cannot exchange a currency for itself.', 'error')
+    return
+  }
   tradeLoading.value = true
   try {
     const { data } = await tradeApi.exchange(fromCurrency.value, toCurrency.value, exchangeAmount.value)
-    tradeSuccess.value = `Trade complete: sent ${data.sent_amount} ${data.from_currency}, received ${data.received_amount.toFixed(6)} ${data.to_currency} at rate ${data.rate.toFixed(6)}.`
+    // Immediately reflect new balances — don't wait for the background poll
+    portfolioStore.applyTradeOptimistic({
+      fromCurrency:   data.from_currency,
+      toCurrency:     data.to_currency,
+      sentAmount:     data.sent_amount,
+      receivedAmount: data.received_amount,
+    })
+    showTradeFeedback(
+      `Sent ${data.sent_amount} ${data.from_currency}, received ${data.received_amount.toFixed(6)} ${data.to_currency} at rate ${data.rate.toFixed(6)}.`,
+      'success'
+    )
     exchangeAmount.value = null
     receiveAmount.value  = null
-    await portfolioStore.fetchHoldings()
-    await loadHistory()
+    // Reconcile with server in background — fire-and-forget
+    portfolioStore.fetchHoldings()
+    loadHistory()
   } catch (e) {
-    tradeError.value = e.response?.data?.detail || 'Trade failed.'
+    showTradeFeedback(formatApiDetail(e.response?.data?.detail, 'Trade failed.'), 'error')
   } finally {
     tradeLoading.value = false
   }
@@ -1414,20 +1873,31 @@ async function executeTrade() {
 
 // ── Transfer logic ────────────────────────────────────────────────────────
 async function executeTransfer() {
-  transferError.value   = ''
-  transferSuccess.value = ''
-  if (!transferEmail.value) { transferError.value = 'Enter a recipient email.'; return }
-  if (!transferAmount.value || transferAmount.value <= 0) { transferError.value = 'Enter a positive amount.'; return }
+  if (!transferEmail.value) {
+    showTradeFeedback('Enter a recipient email.', 'error')
+    return
+  }
+  if (!transferAmount.value || transferAmount.value <= 0) {
+    showTradeFeedback('Enter a positive amount.', 'error')
+    return
+  }
   transferLoading.value = true
   try {
     const { data } = await tradeApi.transfer(transferEmail.value, transferCurrency.value, transferAmount.value)
-    transferSuccess.value = `Sent ${data.amount} ${data.currency} to ${data.to_email}.`
-    transferAmount.value  = null
-    transferEmail.value   = ''
-    await portfolioStore.fetchHoldings()
-    await loadHistory()
+    // Immediately debit the sent amount so the balance updates without waiting
+    portfolioStore.applyTradeOptimistic({
+      fromCurrency:   data.currency,
+      toCurrency:     data.currency, // same currency — credit side is receiver's account
+      sentAmount:     data.amount,
+      receivedAmount: 0,
+    })
+    showTradeFeedback(`Sent ${data.amount} ${data.currency} to ${data.to_email}.`, 'success')
+    transferAmount.value = null
+    transferEmail.value = ''
+    portfolioStore.fetchHoldings()
+    loadHistory()
   } catch (e) {
-    transferError.value = e.response?.data?.detail || 'Transfer failed.'
+    showTradeFeedback(formatApiDetail(e.response?.data?.detail, 'Transfer failed.'), 'error')
   } finally {
     transferLoading.value = false
   }
@@ -1472,7 +1942,9 @@ function formatDate(ts) {
 
 onUnmounted(() => {
   if (chartRefreshTimer) clearInterval(chartRefreshTimer)
-  if (rateRefreshTimer) clearInterval(rateRefreshTimer)
+  forexStore.unsubscribePair(fromCurrency.value, toCurrency.value)
+  const [cpFrom, cpTo] = chartPair.value.split('/')
+  if (cpFrom && cpTo) forexStore.unsubscribePair(cpFrom, cpTo)
   window.removeEventListener('resize', handleResize)
   document.body.style.overflow = ''
   
@@ -1497,6 +1969,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+
 .glass {
   background: rgba(255, 255, 255, 0.02);
   backdrop-filter: blur(10px);

@@ -98,7 +98,7 @@ const WATCH_PAIRS = [
   { pair: 'USD/CAD', description: 'US Dollar / Canadian Dollar' }
 ]
 
-const WATCHLIST_REFRESH_INTERVAL_MS = 4_000  // Reload watchlist prices every 4s (configurable)
+const WATCHLIST_REFRESH_INTERVAL_MS = 60_000  // Weekly candles don't change faster than 1 min
 
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
@@ -162,7 +162,8 @@ async function loadWatchlist() {
     const rows = await Promise.all(
       WATCH_PAIRS.map(async ({ pair, description }) => {
         const [from, to] = pair.split('/')
-        const { data } = await forexApi.getPairHistory(from, to, '1wk')
+        const { candles: _c } = await forexStore.fetchPairHistory(from, to, '1wk')
+        const data = { candles: _c }
         const candles = data.candles || []
         if (candles.length === 0) {
           return {

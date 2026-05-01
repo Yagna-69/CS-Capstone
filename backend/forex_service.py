@@ -8,10 +8,15 @@ import time
 import json
 import os
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 
-CACHE_TTL = 4  # seconds between live rate fetches (per-pair spot quotes)
+CACHE_TTL = 8          # seconds between live rate fetches — frontend polls every 4s so
+                        # alternating polls always hit cache; cold fetches are half as frequent
 HISTORY_CACHE_TTL = 300  # seconds for historical data (OHLC, historical rates)
+
+# Shared thread pool for parallel yfinance calls in get_rates()
+_rate_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="yf-rate")
 
 # Persistent cache directory
 CACHE_DIR = Path(__file__).parent / ".cache"
@@ -155,10 +160,39 @@ def get_rate(from_currency: str, to_currency: str) -> float:
 
 def get_rates(pairs: list[tuple[str, str]]) -> dict[str, float]:
     """
-    Fetch multiple pairs at once. Returns {"{FROM}{TO}": rate, ...}.
-    Each pair is still individually cached.
+    Fetch multiple pairs in parallel. Returns {"{FROM}{TO}": rate, ...}.
+    Pairs already in cache are resolved instantly; only cache-misses hit yfinance.
+    Each pair result is still individually cached for subsequent calls.
     """
-    return {f"{f}{t}": get_rate(f, t) for f, t in pairs}
+    results: dict[str, float] = {}
+
+    # Split into cached (instant) vs uncached (needs network)
+    now = time.time()
+    to_fetch: list[tuple[str, str]] = []
+    for f, t in pairs:
+        key = f"{f.upper()}{t.upper()}"
+        cached_rate, fetched_at = _cache.get(key, (None, 0))
+        if cached_rate is not None and (now - fetched_at) < CACHE_TTL:
+            results[key] = cached_rate
+        else:
+            to_fetch.append((f, t))
+
+    if not to_fetch:
+        return results
+
+    # Fetch cache-misses in parallel via the shared thread pool
+    futures = {
+        _rate_executor.submit(get_rate, f, t): f"{f.upper()}{t.upper()}"
+        for f, t in to_fetch
+    }
+    for future in as_completed(futures):
+        key = futures[future]
+        try:
+            results[key] = future.result()
+        except Exception:
+            pass  # Skip pairs that couldn't be fetched; keep previous value if any
+
+    return results
 
 
 def get_historical_rates(

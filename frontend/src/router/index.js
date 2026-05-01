@@ -6,6 +6,7 @@ import TradingView from '../views/TradingView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import LLMView from '../views/LLMView.vue'
 import NewsView from '../views/NewsView.vue'
+import ResetPasswordView from '../views/ResetPasswordView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -14,6 +15,11 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView
+    },
+    {
+      path: '/reset-password',
+      name: 'reset-password',
+      component: ResetPasswordView
     },
     {
       path: '/',

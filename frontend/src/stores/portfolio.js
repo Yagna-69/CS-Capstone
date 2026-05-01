@@ -102,6 +102,28 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
+  /**
+   * Immediately apply a known trade result to holdings in memory so the UI
+   * reflects the new balances without waiting for the next API poll.
+   * The background fetchHoldings() call will reconcile with the server truth.
+   */
+  function applyTradeOptimistic({ fromCurrency, toCurrency, sentAmount, receivedAmount }) {
+    const adjust = (ticker, delta) => {
+      const holding = holdings.value.find(
+        h => (h['currency-ticker-symbol'] || h.currency) === ticker
+      )
+      if (holding) {
+        holding.amount = Math.max(0, Number(holding.amount) + delta)
+      } else if (delta > 0) {
+        holdings.value.push({ 'currency-ticker-symbol': ticker, currency: ticker, amount: delta })
+      }
+    }
+    adjust(fromCurrency, -sentAmount)
+    adjust(toCurrency,   +receivedAmount)
+    // Update hash so the next fetchHoldings diff check still works
+    previousHoldingsHash = getHoldingsHash(holdings.value)
+  }
+
   async function deposit(currency, amount) {
     await portfolioApi.deposit(currency, amount)
     await fetchHoldings()
@@ -146,11 +168,26 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   // Load wishlist from localStorage on store initialization
   loadWishlistFromStorage()
 
+  function $reset() {
+    holdings.value             = []
+    loading.value              = false
+    error.value                = null
+    previousHoldingsHash       = null
+    historyData.value          = null
+    historyLoading.value       = false
+    historyError.value         = null
+    selectedPeriod.value       = '1mo'
+    firstTransactionDate.value = null
+    wishlist.value             = []
+    try { localStorage.removeItem(WISHLIST_STORAGE_KEY) } catch { /* ignore */ }
+  }
+
   return {
     holdings, loading, error,
     historyData, historyLoading, historyError, selectedPeriod,
     firstTransactionDate,
-    fetchHoldings, fetchHistory, fetchFirstTransactionDate, deposit, withdraw,
+    fetchHoldings, fetchHistory, fetchFirstTransactionDate, applyTradeOptimistic, deposit, withdraw,
     wishlist, isInWishlist, addToWishlist, removeFromWishlist, toggleWishlist,
+    $reset,
   }
 })

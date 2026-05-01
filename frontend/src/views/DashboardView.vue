@@ -232,7 +232,7 @@
               <div>
                 <h2 class="text-xl font-bold text-white">Portfolio Value</h2>
                 <p class="text-2xl font-bold mt-0.5 text-white">
-                  ${{ totalPortfolioValue.toFixed(2) }} {{ defaultCurrency }}
+                  {{ totalPortfolioValue.toFixed(2) }} {{ defaultCurrency }}
                 </p>
               </div>
             </div>
@@ -243,14 +243,14 @@
                 </p>
                 <div v-if="portfolioStore.historyData?.total_deposited != null" class="flex items-center gap-3 text-xs">
                   <span class="text-gray-400">
-                    Principal: <span class="font-mono text-gray-300">${{ portfolioStore.historyData.total_deposited.toFixed(2) }}</span>
+                    Principal: <span class="font-mono text-gray-300">{{ usdToDisplay(portfolioStore.historyData.total_deposited).toFixed(2) }} {{ defaultCurrency }}</span>
                   </span>
                   <span class="text-gray-400">•</span>
                   <span :class="[
                     'font-semibold',
                     (portfolioStore.historyData.net_gain_loss || 0) >= 0 ? 'text-green-400' : 'text-red-400'
                   ]">
-                    Net: {{ (portfolioStore.historyData.net_gain_loss || 0) >= 0 ? '+' : '' }}${{ Math.abs(portfolioStore.historyData.net_gain_loss || 0).toFixed(2) }}
+                    Net: {{ (portfolioStore.historyData.net_gain_loss || 0) >= 0 ? '+' : '' }}{{ usdToDisplay(Math.abs(portfolioStore.historyData.net_gain_loss || 0)).toFixed(2) }} {{ defaultCurrency }}
                   </span>
                 </div>
               </div>
@@ -267,16 +267,11 @@
           <Teleport to="body">
             <div v-if="showDepositModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="closeDeposit">
               <div class="bg-bg-secondary border border-gray-700 rounded-2xl p-6 w-full max-w-sm mx-4">
-                <h3 class="text-xl font-bold text-white mb-4">Deposit Funds</h3>
+                <h3 class="text-xl font-bold text-white mb-1">Deposit Funds</h3>
+                <p class="text-xs text-gray-500 mb-4">Deposits are added in your default currency (<span class="text-primary font-semibold">{{ defaultCurrency }}</span>). Change it in Settings → Preferences.</p>
                 <div class="space-y-4">
                   <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Currency</label>
-                    <select v-model="depositCurrency" class="w-full px-4 py-3 bg-bg-primary border border-gray-700 rounded-lg text-white focus:outline-none focus:border-primary">
-                      <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.code }} — {{ c.name }}</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Amount</label>
+                    <label class="text-sm text-gray-400 mb-1 block">Amount ({{ defaultCurrency }})</label>
                     <input
                       v-model.number="depositAmount"
                       type="number"
@@ -300,42 +295,6 @@
             </div>
           </Teleport>
 
-          <!-- Withdraw Modal -->
-          <Teleport to="body">
-            <div v-if="showWithdrawModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="closeWithdraw">
-              <div class="bg-bg-secondary border border-gray-700 rounded-2xl p-6 w-full max-w-sm mx-4">
-                <h3 class="text-xl font-bold text-white mb-4">Withdraw Funds</h3>
-                <div class="space-y-4">
-                  <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Currency</label>
-                    <select v-model="withdrawCurrency" class="w-full px-4 py-3 bg-bg-primary border border-gray-700 rounded-lg text-white focus:outline-none focus:border-primary">
-                      <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.code }} — {{ c.name }}</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Amount</label>
-                    <input
-                      v-model.number="withdrawAmount"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="0.00"
-                      class="w-full px-4 py-3 bg-bg-primary border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <p v-if="withdrawError" class="text-red-400 text-sm">{{ withdrawError }}</p>
-                  <div class="flex gap-3 pt-2">
-                    <button @click="closeWithdraw" class="flex-1 py-3 border border-gray-600 text-gray-400 rounded-full font-bold hover:border-gray-400 transition">
-                      Cancel
-                    </button>
-                    <button @click="handleWithdraw" :disabled="withdrawLoading" class="flex-1 py-3 bg-red-600 text-white rounded-full font-bold hover:opacity-80 transition disabled:opacity-50">
-                      {{ withdrawLoading ? 'Withdrawing...' : 'Confirm' }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Teleport>
 
           <div class="bg-bg-primary rounded-lg p-4 flex-1 flex flex-col overflow-hidden" style="min-height: 350px; max-height: 350px;">
             <!-- Chart Area -->
@@ -457,8 +416,8 @@
                 </svg>
               </div>
               <div>
-                <p class="text-xs text-gray-400 mb-1">Buying Power</p>
-                <p class="text-xl font-bold text-white">${{ portfolioStore.balance?.toFixed(2) || '0.00' }}</p>
+                <p class="text-xs text-gray-400 mb-1">Buying Power <span class="text-gray-600">({{ defaultCurrency }})</span></p>
+                <p class="text-xl font-bold text-white">{{ buyingPower.toFixed(2) }} {{ defaultCurrency }}</p>
               </div>
             </div>
             <div class="flex gap-2">
@@ -467,12 +426,6 @@
                 class="px-4 py-2 bg-gradient-to-r from-primary to-primary/80 text-black font-bold rounded-lg hover:shadow-lg hover:shadow-primary/30 transition-all text-sm"
               >
                 Deposit
-              </button>
-              <button 
-                @click="showWithdrawModal = true"
-                class="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-600 text-white font-bold rounded-lg hover:shadow-lg hover:shadow-gray-500/30 transition-all text-sm"
-              >
-                Withdraw
               </button>
             </div>
           </div>
@@ -560,6 +513,8 @@ import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '@/stores/portfolio'
 import { useForexStore } from '@/stores/forex'
 import { useNewsStore } from '@/stores/news'
+import { usePrefsStore } from '@/stores/prefs'
+import { useAuthStore } from '@/stores/auth'
 import {
   startOfLocalDayMs,
   endOfLocalDayMs,
@@ -597,6 +552,8 @@ const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
 const newsStore = useNewsStore()
+const prefsStore = usePrefsStore()
+const authStore = useAuthStore()
 
 // ── Currencies ───────────────────────────────────────────────────────────
 // Use forex store currencies instead of fetching directly
@@ -691,8 +648,8 @@ const selectedPeriodDisplayLabel = computed(() => {
 /** Total = USD value; Relative = % change from first point in range (today’s first bar for 1D). */
 const portfolioChartMode = ref('total')
 
-// Default display currency (USD for now, will be user-configurable)
-const defaultCurrency = ref('USD')
+// Reactive display currency driven by user preferences (Settings → Preferences)
+const defaultCurrency = computed(() => prefsStore.displayCurrency)
 
 // Holdings donut chart data
 const holdingsDonutData = computed(() => {
@@ -751,28 +708,69 @@ const holdingsDonutOptions = {
   cutout: '65%'
 }
 
-const PORTFOLIO_REFRESH_INTERVAL_MS = 4_000  // Re-fetch holdings/history every 4s (configurable)
+const PORTFOLIO_REFRESH_INTERVAL_MS = 15_000  // Holdings rarely change mid-session
 let portfolioRefreshTimer = null
 
-onMounted(() => {
-  // Currencies are auto-loaded by forex store pipeline (no need to call fetchCurrencies)
-  portfolioStore.fetchHoldings()
+// Track which pairs we've subscribed so we can unsubscribe on unmount
+let _subscribedPairs = []
+
+function _syncForexSubscriptions() {
+  // Unsubscribe stale pairs
+  _subscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _subscribedPairs = []
+
+  const display = defaultCurrency.value || 'USD'
+
+  // Always subscribe USD→displayCurrency for portfolio value conversion
+  if (display !== 'USD') {
+    forexStore.subscribePair('USD', display)
+    _subscribedPairs.push(['USD', display])
+  }
+
+  // Subscribe each held currency → displayCurrency for per-holding values
+  portfolioStore.holdings.forEach(h => {
+    const ticker = h['currency-ticker-symbol'] || h.currency
+    if (ticker && ticker !== display) {
+      forexStore.subscribePair(ticker, display)
+      _subscribedPairs.push([ticker, display])
+    }
+  })
+
+  // Subscribe each wishlist pair so getWishlistPrice() gets live rates
+  portfolioStore.wishlist.forEach(({ pair }) => {
+    const [f, t] = pair.split('/')
+    if (f && t && f !== t) {
+      forexStore.subscribePair(f, t)
+      _subscribedPairs.push([f, t])
+    }
+  })
+}
+
+onMounted(async () => {
+  prefsStore.load(authStore.userId)
+
+  await portfolioStore.fetchHoldings()
+  _syncForexSubscriptions()
+
   portfolioStore.fetchHistory('1mo')
-  portfolioStore.fetchFirstTransactionDate()  // Fetch first transaction date
-  loadFeedNews()  // Load news feed on mount
-  loadWishlistSparklines()  // Load wishlist sparklines on mount
+  portfolioStore.fetchFirstTransactionDate()
+  loadFeedNews()
+  loadWishlistSparklines()
+
   portfolioRefreshTimer = setInterval(async () => {
     const result = await portfolioStore.fetchHoldings()
-    // Only refetch history if holdings actually changed
     if (result?.holdingsChanged) {
+      _syncForexSubscriptions()
       portfolioStore.fetchHistory(portfolioStore.selectedPeriod, true)
-      loadFeedNews()  // Reload news when holdings change
+      loadFeedNews()
     }
   }, PORTFOLIO_REFRESH_INTERVAL_MS)
 })
 
 onUnmounted(() => {
   if (portfolioRefreshTimer) clearInterval(portfolioRefreshTimer)
+  _subscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _subscribedPairs = []
 })
 
 // Watch wishlist changes to reload sparklines
@@ -780,6 +778,7 @@ watch(
   () => portfolioStore.wishlist.map((w) => w.pair).join('|'),
   () => {
     loadWishlistSparklines()
+    _syncForexSubscriptions()
   }
 )
 
@@ -1025,9 +1024,24 @@ const portfolioLineChartOptions = computed(() => {
   }
 })
 
+/** Convert a USD amount to the user's chosen display currency. */
+function usdToDisplay(usdAmount) {
+  const cur = defaultCurrency.value
+  if (!cur || cur === 'USD') return usdAmount
+  // The rate key is e.g. "USDEUR" meaning 1 USD = X EUR
+  const rate = forexStore.getRate('USD', cur)
+  return rate ? usdAmount * rate : usdAmount
+}
+
 function sumHoldingsAmountFallback() {
   if (!portfolioStore.holdings?.length) return 0
-  return portfolioStore.holdings.reduce((sum, h) => sum + Number(h.amount), 0)
+  // Sum each holding converted to defaultCurrency
+  return portfolioStore.holdings.reduce((sum, h) => {
+    const ticker = h['currency-ticker-symbol'] || h.currency
+    const amount = Number(h.amount)
+    const rate = forexStore.getRate(ticker, defaultCurrency.value)
+    return sum + amount * (rate || 1)
+  }, 0)
 }
 
 /** Same series as chart: last USD point = headline value; % vs first point in range. */
@@ -1045,7 +1059,7 @@ const portfolioHeadlineMetrics = computed(() => {
     return { value: sumHoldingsAmountFallback(), changePct: 0 }
   }
   return {
-    value: last,
+    value: usdToDisplay(last),
     changePct: first !== 0 ? ((last - first) / first) * 100 : 0
   }
 })
@@ -1053,6 +1067,16 @@ const portfolioHeadlineMetrics = computed(() => {
 const totalPortfolioValue = computed(() => portfolioHeadlineMetrics.value.value)
 
 const portfolioChange = computed(() => portfolioHeadlineMetrics.value.changePct)
+
+/** Amount of the defaultCurrency the user currently holds — this is their cash buying power. */
+const buyingPower = computed(() => {
+  const cur = defaultCurrency.value
+  if (!cur || !portfolioStore.holdings?.length) return 0
+  const holding = portfolioStore.holdings.find(
+    h => (h['currency-ticker-symbol'] || h.currency) === cur
+  )
+  return holding ? Number(holding.amount) : 0
+})
 
 // Populated when watchlist / activity APIs exist; empty = no mock data
 const wishlistItems = ref([])
@@ -1170,7 +1194,6 @@ async function loadFeedNews() {
 
 // Deposit modal state
 const showDepositModal = ref(false)
-const depositCurrency  = ref('USD')
 const depositAmount    = ref(null)
 const depositLoading   = ref(false)
 const depositError     = ref('')
@@ -1189,42 +1212,12 @@ async function handleDeposit() {
   }
   depositLoading.value = true
   try {
-    await portfolioStore.deposit(depositCurrency.value, depositAmount.value)
+    await portfolioStore.deposit(defaultCurrency.value, depositAmount.value)
     closeDeposit()
   } catch (e) {
     depositError.value = e.response?.data?.detail || 'Deposit failed.'
   } finally {
     depositLoading.value = false
-  }
-}
-
-// Withdraw modal state
-const showWithdrawModal = ref(false)
-const withdrawCurrency  = ref('USD')
-const withdrawAmount    = ref(null)
-const withdrawLoading   = ref(false)
-const withdrawError     = ref('')
-
-function closeWithdraw() {
-  showWithdrawModal.value = false
-  withdrawAmount.value    = null
-  withdrawError.value     = ''
-}
-
-async function handleWithdraw() {
-  withdrawError.value = ''
-  if (!withdrawAmount.value || withdrawAmount.value <= 0) {
-    withdrawError.value = 'Enter a positive amount.'
-    return
-  }
-  withdrawLoading.value = true
-  try {
-    await portfolioStore.withdraw(withdrawCurrency.value, withdrawAmount.value)
-    closeWithdraw()
-  } catch (e) {
-    withdrawError.value = e.response?.data?.detail || 'Withdrawal failed.'
-  } finally {
-    withdrawLoading.value = false
   }
 }
 

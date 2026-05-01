@@ -7,6 +7,7 @@ from routes.forex import router as forex_router
 from routes.preferences import router as preferences_router
 from routes.news import router as news_router
 from routes.llm import router as llm_router
+from routes.orders import router as orders_router
 
 api_router = APIRouter()
 
@@ -17,3 +18,4 @@ api_router.include_router(forex_router,       prefix="/forex",       tags=["fore
 api_router.include_router(preferences_router, prefix="/preferences", tags=["preferences"])
 api_router.include_router(news_router,        prefix="/news",        tags=["news"])
 api_router.include_router(llm_router,         prefix="/llm",         tags=["llm"])
+api_router.include_router(orders_router,      prefix="/orders",      tags=["orders"])

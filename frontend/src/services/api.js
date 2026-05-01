@@ -28,10 +28,14 @@ apiClient.interceptors.response.use(
 )
 
 export const authApi = {
-  login:  (email, password) => apiClient.post('/auth/login',  { email, password }),
-  signup: (email, password) => apiClient.post('/auth/signup', { email, password }),
-  logout: ()               => apiClient.post('/auth/logout'),
-  me:     ()               => apiClient.get('/auth/me'),
+  login:          (email, password)   => apiClient.post('/auth/login',           { email, password }),
+  signup:         (email, password)   => apiClient.post('/auth/signup',          { email, password }),
+  logout:         ()                  => apiClient.post('/auth/logout'),
+  me:             ()                  => apiClient.get('/auth/me'),
+  changePassword:    (current_password, new_password) => apiClient.post('/auth/change-password', { current_password, new_password }),
+  sendTestEmail:     ()                               => apiClient.post('/auth/send-test-email'),
+  sendPasswordReset:     (email)                               => apiClient.post('/auth/send-password-reset', { email }),
+  resetPasswordWithToken: (access_token, new_password)         => apiClient.post('/auth/reset-password',       { access_token, new_password }),
 }
 
 export const portfolioApi = {
@@ -72,6 +76,12 @@ export const llmApi = {
   createKey:   (data)      => apiClient.post('/llm/keys', data),
   activateKey: (keyId)     => apiClient.put(`/llm/keys/${keyId}/activate`),
   deleteKey:   (keyId)     => apiClient.delete(`/llm/keys/${keyId}`),
+}
+
+export const ordersApi = {
+  place:  (data)     => apiClient.post('/orders/', data),
+  list:   ()         => apiClient.get('/orders/'),
+  cancel: (orderId)  => apiClient.delete(`/orders/${orderId}`),
 }
 
 export const newsApi = {

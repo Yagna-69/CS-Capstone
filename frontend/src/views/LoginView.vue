@@ -13,10 +13,59 @@
           <RouterLink to="/" class="text-6xl font-bold font-goldman text-primary hover:opacity-80 transition">FXTrade</RouterLink>
         </div>
 
-        <!-- Login/Signup Toggle with Transition -->
+        <!-- Login/Signup/Forgot Toggle with Transition -->
         <Transition name="slide-fade" mode="out-in">
+          <!-- Forgot Password Form -->
+          <div v-if="isForgot" key="forgot">
+            <button type="button" @click="goToLogin" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-white transition mb-6">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+              </svg>
+              Back to login
+            </button>
+
+            <h2 class="text-2xl font-bold text-white text-center mb-2">Reset your password</h2>
+            <p class="text-gray-500 text-sm text-center mb-8">Enter your email and we'll send you a reset link.</p>
+
+            <div v-if="forgotMsg === 'sent'" class="text-center space-y-4">
+              <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                <svg class="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <p class="text-white font-semibold">Check your inbox</p>
+              <p class="text-gray-400 text-sm">A reset link has been sent to <span class="text-white">{{ forgotEmail }}</span>.</p>
+              <button type="button" @click="goToLogin" class="w-full py-3.5 bg-primary text-black rounded-full font-bold hover:opacity-90 transition mt-2">
+                Back to Login
+              </button>
+            </div>
+
+            <form v-else @submit.prevent="sendForgotPassword" class="space-y-4">
+              <div class="relative">
+                <svg class="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+                </svg>
+                <input
+                  v-model="forgotEmail"
+                  type="email"
+                  placeholder="Enter your email"
+                  required
+                  class="w-full pl-12 pr-4 py-3.5 bg-bg-primary border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary transition"
+                />
+              </div>
+              <p v-if="forgotMsg && forgotMsg !== 'sent'" class="text-red-400 text-sm">{{ forgotMsg }}</p>
+              <button
+                type="submit"
+                :disabled="forgotSending"
+                class="w-full py-3.5 bg-primary text-black rounded-full font-bold hover:opacity-90 transition disabled:opacity-50 mt-2 relative"
+              >
+                {{ forgotSending ? 'Sending…' : 'Send Reset Link' }}
+              </button>
+            </form>
+          </div>
+
           <!-- Login Form -->
-          <div v-if="!isSignup" key="login">
+          <div v-else-if="!isSignup" key="login">
             <h2 class="text-2xl font-bold text-white text-center mb-8">Log in to your account</h2>
 
             <form @submit.prevent="handleLogin" class="space-y-4">
@@ -79,7 +128,9 @@
 
               <!-- Forgot Password -->
               <div class="text-center pt-2">
-                <a href="#" class="text-sm text-gray-400 hover:text-white transition">Forgot password?</a>
+                <button type="button" @click="goToForgot" class="text-sm text-gray-400 hover:text-white transition">
+                  Forgot password?
+                </button>
               </div>
             </form>
 
@@ -193,6 +244,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/services/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -202,7 +254,11 @@ const confirmPassword = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const matrixCanvas = ref(null)
-const isSignup = ref(false)  // Toggle between login/signup
+const isSignup = ref(false)
+const isForgot = ref(false)
+const forgotSending = ref(false)
+const forgotMsg = ref('')
+const forgotEmail = ref('')
 let animationId = null
 
 onMounted(() => {
@@ -290,6 +346,7 @@ onUnmounted(() => {
 })
 
 function goToSignup() {
+  isForgot.value = false
   isSignup.value = true
   email.value = ''
   password.value = ''
@@ -297,10 +354,18 @@ function goToSignup() {
 }
 
 function goToLogin() {
+  isForgot.value = false
   isSignup.value = false
   email.value = ''
   password.value = ''
   confirmPassword.value = ''
+}
+
+function goToForgot() {
+  forgotMsg.value = ''
+  forgotEmail.value = email.value  // pre-fill if the user already typed their email
+  isForgot.value = true
+  isSignup.value = false
 }
 
 async function handleSignup() {
@@ -327,6 +392,23 @@ async function handleSignup() {
     alert(e.response?.data?.detail || 'Signup failed. Please try again.')
   } finally {
     loading.value = false
+  }
+}
+
+async function sendForgotPassword() {
+  if (!forgotEmail.value) {
+    forgotMsg.value = 'Please enter your email address.'
+    return
+  }
+  forgotSending.value = true
+  forgotMsg.value = ''
+  try {
+    await authApi.sendPasswordReset(forgotEmail.value)
+    forgotMsg.value = 'sent'
+  } catch (e) {
+    forgotMsg.value = e.response?.data?.detail || 'Could not send reset email.'
+  } finally {
+    forgotSending.value = false
   }
 }
 

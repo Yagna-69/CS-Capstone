@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from models import (
     DepositRequest, WithdrawRequest, PortfolioHolding,
     HistoricalPortfolioResponse, HistoricalDataPoint,
@@ -25,7 +26,9 @@ async def get_portfolio(current=Depends(get_current_user)):
     admin = get_supabase_admin()
 
     try:
-        response = admin.table("portfolio").select("*").eq("id", user_id).execute()
+        response = await asyncio.to_thread(
+            lambda: admin.table("portfolio").select("*").eq("id", user_id).execute()
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -45,14 +48,10 @@ async def get_first_transaction(current=Depends(get_current_user)):
     admin = get_supabase_admin()
 
     try:
-        # Get earliest transaction where user was sender or receiver
-        response = (
-            admin.table("transaction-log")
-            .select("timestamp")
-            .or_(f"sender_id.eq.{user_id},receiver_id.eq.{user_id}")
-            .order("timestamp", desc=False)
-            .limit(1)
-            .execute()
+        response = await asyncio.to_thread(
+            lambda: admin.table("transaction-log").select("timestamp")
+                .or_(f"sender_id.eq.{user_id},receiver_id.eq.{user_id}")
+                .order("timestamp", desc=False).limit(1).execute()
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -80,7 +79,9 @@ async def get_portfolio_history(
 
     # Fetch current holdings
     try:
-        response = admin.table("portfolio").select("*").eq("id", user_id).execute()
+        response = await asyncio.to_thread(
+            lambda: admin.table("portfolio").select("*").eq("id", user_id).execute()
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -100,24 +101,25 @@ async def get_portfolio_history(
 
     yf_period, yf_interval = PERIOD_MAP[period]
 
-    # Fetch historical rates for each non-USD currency -> USD
-    rate_series: dict[str, dict[str, float]] = {}  # currency -> {date -> rate}
+    # Fetch historical rates for all non-USD currencies in parallel
+    non_usd = [h["currency"].upper() for h in holdings if h["currency"].upper() != "USD"]
+
+    async def _fetch_one(ccy: str):
+        try:
+            data = await asyncio.to_thread(get_historical_rates, ccy, "USD", period)
+            return ccy, data
+        except ValueError:
+            return ccy, []
+
+    fetched = await asyncio.gather(*[_fetch_one(ccy) for ccy in non_usd])
+
+    rate_series: dict[str, dict[str, float]] = {}
     reference_dates: list[str] | None = None
 
-    for h in holdings:
-        ccy = h["currency"].upper()
-        if ccy == "USD":
+    for ccy, data in fetched:
+        if not data:
             continue
-        try:
-            data = get_historical_rates(ccy, "USD", period)
-        except ValueError:
-            # If we can't get rates for this currency, skip it
-            continue
-
-        date_rate_map = {pt["date"]: pt["rate"] for pt in data}
-        rate_series[ccy] = date_rate_map
-
-        # Use first non-USD currency's dates as reference
+        rate_series[ccy] = {pt["date"]: pt["rate"] for pt in data}
         if reference_dates is None:
             reference_dates = [pt["date"] for pt in data]
 
@@ -184,13 +186,11 @@ async def get_portfolio_history(
             if deposit_currency == "USD":
                 total_deposited_usd += deposit_amount
             else:
-                # Convert deposit amount to USD using rate at time of deposit
-                # For simplicity, use current rate (ideally would use historical rate)
                 try:
                     from forex_service import get_rate
-                    rate_to_usd = get_rate(deposit_currency, "USD")
+                    rate_to_usd = await asyncio.to_thread(get_rate, deposit_currency, "USD")
                     total_deposited_usd += deposit_amount * rate_to_usd
-                except:
+                except Exception:
                     pass
         
         # Calculate current portfolio value (last data point)
@@ -212,91 +212,64 @@ async def get_portfolio_history(
 
 
 @router.post("/deposit", response_model=PortfolioHolding)
-async def deposit(body: DepositRequest, current=Depends(get_current_user)):
-    """
-    Add funds in a given currency to the user's portfolio.
-    If a holding in that currency already exists its amount is increased.
-    """
-    user_id = current["user"].id
+async def deposit(body: DepositRequest, background_tasks: BackgroundTasks, current=Depends(get_current_user)):
+    """Add funds in a given currency to the user's portfolio."""
+    user_id  = current["user"].id
     currency = _normalize_currency(body.currency)
-    admin = get_supabase_admin()
+    admin    = get_supabase_admin()
 
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Deposit amount must be positive.")
 
-    # Fetch existing holding for this user + currency
     try:
-        existing = (
-            admin.table("portfolio")
-            .select("*")
-            .eq("id", user_id)
-            .eq("currency-ticker-symbol", currency)
-            .execute()
+        existing = await asyncio.to_thread(
+            lambda: admin.table("portfolio").select("amount")
+                .eq("id", user_id).eq("currency-ticker-symbol", currency).execute()
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
     if existing.data:
-        current_amount = float(existing.data[0]["amount"] or 0)
-        new_amount = current_amount + body.amount
-        try:
-            admin.table("portfolio").update({"amount": new_amount}).eq("id", user_id).eq(
-                "currency-ticker-symbol", currency
-            ).execute()
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+        new_amount = float(existing.data[0]["amount"] or 0) + body.amount
+        await asyncio.to_thread(
+            lambda: admin.table("portfolio").update({"amount": new_amount})
+                .eq("id", user_id).eq("currency-ticker-symbol", currency).execute()
+        )
     else:
-        try:
-            admin.table("portfolio").insert({
-                "id": user_id,
-                "currency-ticker-symbol": currency,
-                "amount": body.amount,
-            }).execute()
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
-
         new_amount = body.amount
+        await asyncio.to_thread(
+            lambda: admin.table("portfolio").insert({
+                "id": user_id, "currency-ticker-symbol": currency, "amount": new_amount,
+            }).execute()
+        )
 
-    # Log the deposit
     now = datetime.now(timezone.utc)
-    try:
-        admin.table("transaction-log").insert({
-            "sender_id": user_id,
-            "receiver_id": user_id,
+    background_tasks.add_task(
+        lambda: admin.table("transaction-log").insert({
+            "sender_id": user_id, "receiver_id": user_id,
             "sender_currency_ticker_symbol": currency,
             "receiver_currency_ticker_symbol": currency,
-            "sender-amount": body.amount,
-            "receiver-amount": body.amount,
-            "timestamp": now.isoformat(),
-            "type": "DEPOSIT",
+            "sender-amount": body.amount, "receiver-amount": body.amount,
+            "timestamp": now.isoformat(), "type": "DEPOSIT",
         }).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Transaction log failed: {exc}")
-
+    )
     return PortfolioHolding(currency=currency, amount=new_amount)
 
 
 @router.post("/withdraw", response_model=PortfolioHolding)
-async def withdraw(body: WithdrawRequest, current=Depends(get_current_user)):
-    """
-    Withdraw funds in a given currency from the user's portfolio.
-    Fails if the user has insufficient balance.
-    """
-    user_id = current["user"].id
+async def withdraw(body: WithdrawRequest, background_tasks: BackgroundTasks, current=Depends(get_current_user)):
+    """Withdraw funds in a given currency from the user's portfolio."""
+    user_id  = current["user"].id
     currency = _normalize_currency(body.currency)
-    admin = get_supabase_admin()
+    admin    = get_supabase_admin()
 
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Withdrawal amount must be positive.")
 
-    # Fetch existing holding
     try:
-        existing = (
-            admin.table("portfolio")
-            .select("*")
-            .eq("id", user_id)
-            .eq("currency-ticker-symbol", currency)
-            .execute()
+        existing = await asyncio.to_thread(
+            lambda: admin.table("portfolio").select("amount")
+                .eq("id", user_id).eq("currency-ticker-symbol", currency).execute()
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -309,27 +282,19 @@ async def withdraw(body: WithdrawRequest, current=Depends(get_current_user)):
         )
 
     new_amount = round(current_amount - body.amount, 8)
-    try:
-        admin.table("portfolio").update({"amount": new_amount}).eq("id", user_id).eq(
-            "currency-ticker-symbol", currency
-        ).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    await asyncio.to_thread(
+        lambda: admin.table("portfolio").update({"amount": new_amount})
+            .eq("id", user_id).eq("currency-ticker-symbol", currency).execute()
+    )
 
-    # Log the withdrawal (negative amounts indicate outflow)
     now = datetime.now(timezone.utc)
-    try:
-        admin.table("transaction-log").insert({
-            "sender_id": user_id,
-            "receiver_id": user_id,
+    background_tasks.add_task(
+        lambda: admin.table("transaction-log").insert({
+            "sender_id": user_id, "receiver_id": user_id,
             "sender_currency_ticker_symbol": currency,
             "receiver_currency_ticker_symbol": currency,
-            "sender-amount": -body.amount,
-            "receiver-amount": -body.amount,
-            "timestamp": now.isoformat(),
-            "type": "WITHDRAW",
+            "sender-amount": -body.amount, "receiver-amount": -body.amount,
+            "timestamp": now.isoformat(), "type": "WITHDRAW",
         }).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Transaction log failed: {exc}")
-
+    )
     return PortfolioHolding(currency=currency, amount=new_amount)

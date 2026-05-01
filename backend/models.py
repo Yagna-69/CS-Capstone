@@ -88,6 +88,29 @@ class RateResponse(BaseModel):
     timestamp: datetime
 
 
+# --- Orders ---
+
+class PlaceOrderRequest(BaseModel):
+    from_currency: str
+    to_currency: str
+    amount: float
+    order_type: str          # "Limit" | "Stop" | "Stop-Limit"
+    target_price: float      # for Limit/Stop: trigger price; for Stop-Limit: the stop price
+    limit_price: Optional[float] = None  # Stop-Limit only: max price willing to pay
+
+
+class OrderResponse(BaseModel):
+    order_id: str
+    from_currency: str
+    to_currency: str
+    amount: float
+    order_type: str
+    target_price: float
+    limit_price: Optional[float]
+    status: str              # "PENDING" | "FILLED" | "CANCELLED" | "EXPIRED"
+    created_at: datetime
+
+
 # --- Preferences ---
 
 class PreferencesUpdate(BaseModel):

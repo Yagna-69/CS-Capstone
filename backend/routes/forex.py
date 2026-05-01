@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from models import RateResponse
@@ -47,19 +48,12 @@ DEFAULT_PAIRS = [
 async def live_rate(from_currency: str, to_currency: str):
     """Return the live exchange rate for a single currency pair."""
     from_cur = from_currency.upper()
-    to_cur = to_currency.upper()
-
+    to_cur   = to_currency.upper()
     try:
-        rate = get_rate(from_cur, to_cur)
+        rate = await asyncio.to_thread(get_rate, from_cur, to_cur)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-
-    return RateResponse(
-        from_currency=from_cur,
-        to_currency=to_cur,
-        rate=rate,
-        timestamp=datetime.now(timezone.utc),
-    )
+    return RateResponse(from_currency=from_cur, to_currency=to_cur, rate=rate, timestamp=datetime.now(timezone.utc))
 
 
 @router.get("/rates")
@@ -78,14 +72,11 @@ async def live_rates(pairs: str = None):
         parsed = DEFAULT_PAIRS
 
     try:
-        rates = get_rates(parsed)
+        rates = await asyncio.to_thread(get_rates, parsed)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    return {
-        "rates": rates,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    return {"rates": rates, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @router.get("/history/{from_currency}/{to_currency}")
@@ -104,11 +95,7 @@ async def pair_ohlc_history(
             detail=f"Invalid period. Use one of: {list(PERIOD_MAP)}",
         )
     try:
-        candles = get_historical_ohlc(
-            from_currency.upper(),
-            to_currency.upper(),
-            period,
-        )
+        candles = await asyncio.to_thread(get_historical_ohlc, from_currency.upper(), to_currency.upper(), period)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
