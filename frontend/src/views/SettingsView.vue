@@ -16,6 +16,7 @@
           <span>{{ tab.name }}</span>
         </button>
       </nav>
+
     </div>
 
     <div class="settings-divider"></div>
@@ -172,6 +173,21 @@
             </div>
           </div>
 
+          <div class="divider"></div>
+
+          <!-- Sign Out -->
+          <div>
+            <h3 class="text-sm font-semibold text-gray-300 mb-1">Sign Out</h3>
+            <p class="text-xs text-gray-500 mb-3">Log out of your account on this device.</p>
+            <button class="btn-danger" @click="handleSignOut">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -212,6 +228,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { authApi, preferencesApi } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useForexStore } from '@/stores/forex'
@@ -220,6 +237,12 @@ import { usePrefsStore } from '@/stores/prefs'
 const authStore  = useAuthStore()
 const prefsStore = usePrefsStore()
 const forexStore = useForexStore()
+const router     = useRouter()
+
+async function handleSignOut() {
+  await authStore.logout()
+  router.push('/login')
+}
 const currencies = computed(() => forexStore.currencies)
 
 const activeTab = ref('profile')
@@ -447,6 +470,7 @@ const tabs = [
 .settings-tab.active { color: #FFD700; background: rgba(255, 215, 0, 0.08); }
 .settings-tab.active::before { background: #FFD700; }
 
+
 .settings-divider {
   display: none;
   background: rgba(255, 255, 255, 0.08);
@@ -594,6 +618,22 @@ const tabs = [
 
 .btn-secondary:hover:not(:disabled) { border-color: #FFD700; background: rgba(255, 215, 0, 0.08); }
 .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: #f87171;
+  font-weight: 600;
+  border-radius: 9999px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+.btn-danger:hover { background: rgba(239, 68, 68, 0.08); border-color: #ef4444; color: #fca5a5; }
 
 .divider {
   height: 1px;
