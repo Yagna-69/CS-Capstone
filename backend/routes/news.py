@@ -8,15 +8,37 @@ fetch serves everyone until TTL expires.
 
 import time
 from fastapi import APIRouter, HTTPException
-from config import settings
 import httpx
 from datetime import datetime, timedelta
+from database import get_supabase_admin
 
 router = APIRouter()
 
 # { cache_key: (articles_list, fetched_at) }
 _news_cache: dict[str, tuple[list, float]] = {}
 NEWS_CACHE_TTL = 30 * 60  # 30 minutes
+
+_newsapi_key_cache: tuple[str | None, float] = (None, 0)
+_NEWSAPI_KEY_TTL = 10 * 60  # re-fetch from Supabase every 10 minutes
+
+
+async def _get_newsapi_key() -> str:
+    global _newsapi_key_cache
+    key, fetched_at = _newsapi_key_cache
+    if key and (time.time() - fetched_at) < _NEWSAPI_KEY_TTL:
+        return key
+    try:
+        result = get_supabase_admin().table("news_api_key").select("api_key").order("id", desc=True).limit(1).execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to fetch NewsAPI key from Supabase: {exc}")
+    rows = result.data or []
+    if not rows:
+        raise HTTPException(500, "news_api_key table is empty — no key found in Supabase")
+    key = rows[0].get("api_key") or ""
+    if not key:
+        raise HTTPException(500, "news_api_key row exists but api_key column is null/empty")
+    _newsapi_key_cache = (key, time.time())
+    return key
 
 
 
@@ -182,8 +204,7 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
     Results are cached server-side for NEWS_CACHE_TTL (30 min) so all users
     share a single NewsAPI call per unique query — staying within free tier limits.
     """
-    if not settings.newsapi_key:
-        raise HTTPException(500, "NEWSAPI_KEY is not configured")
+    newsapi_key = await _get_newsapi_key()
 
     limit = max(1, min(limit, 100))
 
@@ -199,7 +220,7 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
     # Fetch a generous page (up to 25) so the cached set covers all callers
     FETCH_SIZE = 25
     params = {
-        "apiKey":   settings.newsapi_key,
+        "apiKey":   newsapi_key,
         "language": "en",
         "pageSize": FETCH_SIZE,
         "q":        query_str,
