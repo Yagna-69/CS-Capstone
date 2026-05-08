@@ -50,31 +50,41 @@ async def chat_completion(messages: list[dict], system_prompt: str = "") -> str:
     Send messages to the active LLM provider using OpenAI-compatible format.
     Returns the assistant's reply text.
     """
-    key_info = get_active_llm_key()
-    provider = key_info["provider"]
-    api_key = key_info["api_key"]
+    try:
+        key_info = get_active_llm_key()
+        provider = key_info["provider"]
+        api_key = key_info["api_key"]
 
-    url = _PROVIDER_URLS.get(provider)
-    if not url:
-        raise LLMKeyError(f"Unsupported provider: {provider}")
+        url = _PROVIDER_URLS.get(provider)
+        if not url:
+            raise LLMKeyError(f"Unsupported provider: {provider}")
 
-    all_messages = []
-    if system_prompt:
-        all_messages.append({"role": "system", "content": system_prompt})
-    all_messages.extend(messages)
+        all_messages = []
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        all_messages.extend(messages)
 
-    payload = {
-        "model": _DEFAULT_MODELS.get(provider, "gpt-4o-mini"),
-        "messages": all_messages,
-    }
+        payload = {
+            "model": _DEFAULT_MODELS.get(provider, "gpt-4o-mini"),
+            "messages": all_messages,
+        }
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except httpx.TimeoutException:
+        raise Exception("LLM request timed out. Please try again.")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise Exception("LLM API key is invalid. Please contact administrator.")
+        elif e.response.status_code == 429:
+            raise Exception("LLM rate limit exceeded. Please try again later.")
+        else:
+            raise Exception(f"LLM provider returned error: {e.response.status_code}")

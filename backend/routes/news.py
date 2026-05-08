@@ -55,22 +55,47 @@ async def _fetch_subreddit_hot(subreddit: str, limit: int) -> dict:
     """Shared helper — proxies a subreddit's hot.json through the backend to avoid CORS."""
     limit = max(1, min(limit, 25))
     fetch_limit = limit + 5
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}"
+    
+    # Try multiple strategies to fetch Reddit data
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/html",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
+    
+    urls_to_try = [
+        f"https://old.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}",
+        f"https://www.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}",
+        f"https://reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}",
+    ]
+    
+    payload = None
+    last_error = None
+    
     try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 403:
-                old_url = f"https://old.reddit.com/r/{subreddit}/hot.json?limit={fetch_limit}"
-                resp = await client.get(old_url, headers=headers)
-            resp.raise_for_status()
-            payload = resp.json()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(exc.response.status_code, f"Reddit API error: {exc.response.text}")
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            for url in urls_to_try:
+                try:
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        payload = resp.json()
+                        break
+                    last_error = f"{resp.status_code}: {resp.text[:200]}"
+                except httpx.HTTPStatusError as exc:
+                    last_error = f"{exc.response.status_code}: {exc.response.text[:200]}"
+                    continue
+                except Exception as exc:
+                    last_error = str(exc)
+                    continue
+            
+            # All URLs failed
+            if payload is None:
+                raise HTTPException(503, f"Reddit temporarily unavailable. Last error: {last_error}")
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(502, f"Failed to fetch Reddit posts: {str(exc)}")
 

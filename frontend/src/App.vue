@@ -30,6 +30,9 @@ const collapseSearch = () => {
   clearSearchBlurTimeout()
   searchFocused.value = false
   showSearchDropdown.value = false
+  // Unsubscribe search pairs when dropdown closes
+  _searchSubscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _searchSubscribedPairs = []
 }
 
 const showTicker = ref(true)
@@ -63,40 +66,45 @@ const tickerItems = computed(() =>
 
 // Search functionality
 const searchResults = computed(() => {
-  let results = baseCurrencies.value
+  let results
+  
+  // Generate ALL possible pairs from currencies list
+  const allCurrencies = forexStore.currencies.map(c => c.code)
+  if (allCurrencies.length === 0) {
+    // Fallback to baseCurrencies if currencies haven't loaded yet
+    results = baseCurrencies.value
+  } else {
+    // Generate all possible pairs
+    const majorBases = ['EUR', 'GBP', 'AUD', 'NZD', 'USD', 'JPY', 'CHF', 'CAD']
+    const allPairs = []
+    
+    for (const base of allCurrencies) {
+      for (const quote of allCurrencies) {
+        if (base === quote) continue
+        // Use market convention ordering to avoid duplicates
+        const baseIdx = majorBases.indexOf(base)
+        const quoteIdx = majorBases.indexOf(quote)
+        if (baseIdx >= 0 && quoteIdx >= 0 && baseIdx > quoteIdx) continue
+        
+        const pairStr = `${base}/${quote}`
+        const rate = forexStore.getRate(base, quote)
+        allPairs.push({
+          pair: pairStr,
+          price: rate ? rate.toFixed(4) : '—',
+          trend: 'up',
+          pctSinceLastPoll: 0
+        })
+      }
+    }
+    results = allPairs
+  }
   
   // Filter by holdings if toggle is on
   if (showOnlyTradeable.value && portfolioStore.holdings.length > 0) {
     const heldCurrencies = portfolioStore.holdings.map(h => 
       h['currency-ticker-symbol'] || h.currency
     )
-    
-    // Get all available quote currencies
-    const allCurrencies = forexStore.currencies.map(c => c.code)
-    
-    // Generate synthetic pairs for held currencies that aren't in the rate feed
-    const syntheticPairs = []
-    heldCurrencies.forEach(base => {
-      allCurrencies.forEach(quote => {
-        if (base !== quote) {
-          const pairStr = `${base}/${quote}`
-          // Only add if not already in baseCurrencies
-          const exists = baseCurrencies.value.some(item => item.pair === pairStr)
-          if (!exists) {
-            syntheticPairs.push({
-              pair: pairStr,
-              price: '—',
-              trend: 'up',
-              pctSinceLastPoll: 0
-            })
-          }
-        }
-      })
-    })
-    
-    // Combine existing pairs with synthetic ones, then filter by held base currency
-    const allPairs = [...baseCurrencies.value, ...syntheticPairs]
-    results = allPairs.filter(item => {
+    results = results.filter(item => {
       const [base, quote] = item.pair.split('/')
       return heldCurrencies.includes(base)
     })
@@ -180,10 +188,28 @@ function getMiniChartPath(data) {
 }
 
 const searchSparklines = ref({})  // { 'EUR/USD': { closes: [...], change1d: 0.5 } }
+let _searchSubscribedPairs = []
 
 async function loadSearchSparklines() {
   if (!showSearchDropdown.value || searchResults.value.length === 0) return
-  const pairs = searchResults.value.map((r) => r.pair)
+  
+  // Subscribe to top visible pairs for live rate data
+  // Unsubscribe previous search pairs
+  _searchSubscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _searchSubscribedPairs = []
+  
+  // Subscribe to top 20 pairs in search results
+  const topPairs = searchResults.value.slice(0, 20)
+  topPairs.forEach(item => {
+    const [f, t] = item.pair.split('/')
+    if (f && t) {
+      forexStore.subscribePair(f, t)
+      _searchSubscribedPairs.push([f, t])
+    }
+  })
+  
+  // Load sparkline data
+  const pairs = topPairs.map((r) => r.pair)
   const next = { ...searchSparklines.value }
   await Promise.all(
     pairs.map(async (pair) => {
@@ -246,11 +272,32 @@ watch(
 // so rates are warm by the time dashboard/trading components read forexStore.getRate()
 forexStore.startPipeline()
 
+// Subscribe to major currency pairs for the ticker display
+// These pairs will keep the ticker animated and informative for all users
+const TICKER_MAJOR_PAIRS = [
+  ['EUR', 'USD'], ['GBP', 'USD'], ['USD', 'JPY'], ['AUD', 'USD'],
+  ['USD', 'CAD'], ['USD', 'CHF'], ['NZD', 'USD'], ['EUR', 'GBP'],
+  ['EUR', 'JPY'], ['GBP', 'JPY']
+]
+
+TICKER_MAJOR_PAIRS.forEach(([from, to]) => {
+  forexStore.subscribePair(from, to)
+})
+
 let tickerInterval = null
 onMounted(() => {
   document.addEventListener('pointerdown', onSearchPointerDownOutside, true)
 })
 onUnmounted(() => {
+  // Unsubscribe ticker pairs
+  TICKER_MAJOR_PAIRS.forEach(([from, to]) => {
+    forexStore.unsubscribePair(from, to)
+  })
+  
+  // Unsubscribe search pairs
+  _searchSubscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _searchSubscribedPairs = []
+  
   forexStore.stopPipeline()
   clearSearchBlurTimeout()
   document.removeEventListener('pointerdown', onSearchPointerDownOutside, true)

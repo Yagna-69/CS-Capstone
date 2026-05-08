@@ -401,37 +401,49 @@ const showPortfolioChart = ref(false)  // Collapsed by default to save space
 
 // Search results for currency pairs
 const searchResults = computed(() => {
-  const rates = forexStore.rates
-  const keys = Object.keys(rates)
+  let results
   
-  let results = keys.map((key) => {
-    const pair = `${key.slice(0, 3)}/${key.slice(3)}`
-    const price = rates[key].toFixed(4)
-    return { pair, price }
-  })
+  // Generate ALL possible pairs from currencies list
+  const allCurrencies = forexStore.currencies.map(c => c.code)
+  if (allCurrencies.length === 0) {
+    // Fallback to rates if currencies haven't loaded yet
+    const rates = forexStore.rates
+    const keys = Object.keys(rates)
+    results = keys.map((key) => {
+      const pair = `${key.slice(0, 3)}/${key.slice(3)}`
+      const price = rates[key].toFixed(4)
+      return { pair, price }
+    })
+  } else {
+    // Generate all possible pairs
+    const majorBases = ['EUR', 'GBP', 'AUD', 'NZD', 'USD', 'JPY', 'CHF', 'CAD']
+    const allPairs = []
+    
+    for (const base of allCurrencies) {
+      for (const quote of allCurrencies) {
+        if (base === quote) continue
+        // Use market convention ordering to avoid duplicates
+        const baseIdx = majorBases.indexOf(base)
+        const quoteIdx = majorBases.indexOf(quote)
+        if (baseIdx >= 0 && quoteIdx >= 0 && baseIdx > quoteIdx) continue
+        
+        const pairStr = `${base}/${quote}`
+        const rate = forexStore.getRate(base, quote)
+        allPairs.push({
+          pair: pairStr,
+          price: rate ? rate.toFixed(4) : '—'
+        })
+      }
+    }
+    results = allPairs
+  }
   
   // Filter by holdings if toggle is on
   if (showOnlyTradeable.value && portfolioStore.holdings.length > 0) {
     const heldCurrencies = portfolioStore.holdings.map(h => 
       h['currency-ticker-symbol'] || h.currency
     )
-    
-    const allCurrencies = forexStore.currencies.map(c => c.code)
-    const syntheticPairs = []
-    heldCurrencies.forEach(base => {
-      allCurrencies.forEach(quote => {
-        if (base !== quote) {
-          const pairStr = `${base}/${quote}`
-          const exists = results.some(item => item.pair === pairStr)
-          if (!exists) {
-            syntheticPairs.push({ pair: pairStr, price: '—' })
-          }
-        }
-      })
-    })
-    
-    const allPairs = [...results, ...syntheticPairs]
-    results = allPairs.filter(item => {
+    results = results.filter(item => {
       const [base] = item.pair.split('/')
       return heldCurrencies.includes(base)
     })
@@ -446,25 +458,48 @@ const searchResults = computed(() => {
   return results.slice(0, 20)
 })
 
+let _searchSubscribedPairs = []
+
 function handleSearchFocus() {
   showSearchDropdown.value = true
+  subscribeToSearchResults()
 }
 
 function handleSearchBlur() {
   setTimeout(() => {
     showSearchDropdown.value = false
+    unsubscribeFromSearchResults()
   }, 200)
+}
+
+function subscribeToSearchResults() {
+  // Subscribe to top 20 search results for live rate data
+  const topPairs = searchResults.value.slice(0, 20)
+  topPairs.forEach(item => {
+    const [f, t] = item.pair.split('/')
+    if (f && t) {
+      forexStore.subscribePair(f, t)
+      _searchSubscribedPairs.push([f, t])
+    }
+  })
+}
+
+function unsubscribeFromSearchResults() {
+  _searchSubscribedPairs.forEach(([f, t]) => forexStore.unsubscribePair(f, t))
+  _searchSubscribedPairs = []
 }
 
 function handleClickOutside(event) {
   if (searchBarRef.value && !searchBarRef.value.contains(event.target)) {
     showSearchDropdown.value = false
+    unsubscribeFromSearchResults()
   }
 }
 
 async function selectCurrencyPair(pair) {
   searchQuery.value = ''
   showSearchDropdown.value = false
+  unsubscribeFromSearchResults()
   
   // Check if already in widgets
   if (contextWidgets.value.some(w => w.pair === pair)) {
@@ -602,6 +637,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  unsubscribeFromSearchResults()
 })
 
 async function loadKeys() {
@@ -673,6 +709,17 @@ watch(
     await nextTick()
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  }
+)
+
+// Re-subscribe when search results change
+watch(
+  () => searchResults.value.map((r) => r.pair).join('|'),
+  () => {
+    if (showSearchDropdown.value) {
+      unsubscribeFromSearchResults()
+      subscribeToSearchResults()
     }
   }
 )
