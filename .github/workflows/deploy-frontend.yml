@@ -38,7 +38,9 @@ jobs:
 
       - name: Create production env file
         run: |
-          echo "VITE_API_URL=${{ secrets.BACKEND_URL }}" > ./frontend/.env.production
+          # Empty VITE_API_URL makes frontend use relative URLs (/api/*)
+          # which are proxied by nginx to the backend over HTTPS
+          echo "VITE_API_URL=" > ./frontend/.env.production
 
       - name: Build Docker image
         run: |
