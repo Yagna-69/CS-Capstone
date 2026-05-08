@@ -142,8 +142,29 @@ export const useNewsStore = defineStore('news', () => {
     try {
       let posts
       if (fetchFn) {
-        // Caller provides raw posts array directly (browser-direct path)
+        // Caller provides a custom fetcher (e.g. browser-direct with fallback)
         posts = await fetchFn()
+        
+        // If fetchFn returns null, it signals to fall back to backend proxy
+        if (posts === null) {
+          const apiFetcher = subreddit === 'wsb'
+            ? () => newsApi.getWsbPosts(limit)
+            : () => newsApi.getEconomicsPosts(limit)
+          const { data } = await apiFetcher()
+          posts = (data?.posts || []).map(p => ({
+            id:           p.id,
+            title:        p.title,
+            author:       p.author,
+            score:        p.score,
+            num_comments: p.num_comments,
+            time:         p.time,
+            url:          p.url,
+            thumbnail:    p.thumbnail    || null,
+            outbound_url: p.outbound_url || null,
+            flair:        p.flair        || '',
+            selftext:     p.selftext     || '',
+          }))
+        }
       } else {
         // Default: backend proxy
         const apiFetcher = subreddit === 'wsb'

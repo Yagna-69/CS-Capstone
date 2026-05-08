@@ -66,33 +66,40 @@ function _outboundUrl(post) {
 async function _fetchSubredditDirect(subreddit, limit) {
   const fetchLimit = limit + 5
   const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${fetchLimit}`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!res.ok) throw new Error(`Reddit ${res.status}`)
-  const payload = await res.json()
-  const posts = []
-  for (const item of (payload?.data?.children || [])) {
-    const p = item?.data || {}
-    if (p.stickied) continue
-    const thumbnail  = _pickThumbnail(p)
-    const outboundUrl = thumbnail ? null : _outboundUrl(p)
-    const created   = p.created_utc || 0
-    const hoursAgo  = Math.floor((Date.now() / 1000 - created) / 3600)
-    posts.push({
-      id:           p.id,
-      title:        p.title || 'Untitled',
-      author:       p.author || 'Unknown',
-      score:        p.score || 0,
-      num_comments: p.num_comments || 0,
-      time:         hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo / 24)}d ago`,
-      url:          `https://www.reddit.com${p.permalink || ''}`,
-      thumbnail,
-      outbound_url: outboundUrl,
-      flair:        p.link_flair_text || '',
-      selftext:     p.selftext ? p.selftext.slice(0, 200) + '...' : '',
-    })
-    if (posts.length >= limit) break
+  
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (!res.ok) throw new Error(`Reddit ${res.status}`)
+    const payload = await res.json()
+    const posts = []
+    for (const item of (payload?.data?.children || [])) {
+      const p = item?.data || {}
+      if (p.stickied) continue
+      const thumbnail  = _pickThumbnail(p)
+      const outboundUrl = thumbnail ? null : _outboundUrl(p)
+      const created   = p.created_utc || 0
+      const hoursAgo  = Math.floor((Date.now() / 1000 - created) / 3600)
+      posts.push({
+        id:           p.id,
+        title:        p.title || 'Untitled',
+        author:       p.author || 'Unknown',
+        score:        p.score || 0,
+        num_comments: p.num_comments || 0,
+        time:         hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo / 24)}d ago`,
+        url:          `https://www.reddit.com${p.permalink || ''}`,
+        thumbnail,
+        outbound_url: outboundUrl,
+        flair:        p.link_flair_text || '',
+        selftext:     p.selftext ? p.selftext.slice(0, 200) + '...' : '',
+      })
+      if (posts.length >= limit) break
+    }
+    return posts
+  } catch (directError) {
+    // CORS fallback: if direct fetch fails, try backend proxy
+    console.warn(`[Reddit] Direct fetch failed (${directError.message}), trying backend proxy...`)
+    throw directError  // Let the caller handle the backend fallback
   }
-  return posts
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +166,19 @@ export async function enrichRedditPostThumbnails(posts) {
 // ---------------------------------------------------------------------------
 export async function fetchWallstreetbetsPosts(limit = 12) {
   const store = useNewsStore()
-  const posts = await store.fetchRedditPosts('wsb', limit, () => _fetchSubredditDirect('wallstreetbets', limit + 5))
+  
+  // Try direct fetch first, fallback to backend proxy on CORS/network errors
+  const fetchFn = async () => {
+    try {
+      return await _fetchSubredditDirect('wallstreetbets', limit + 5)
+    } catch (directError) {
+      console.warn('[WSB] Direct fetch failed, using backend proxy')
+      // Return null to signal the store to use its default backend fetcher
+      return null
+    }
+  }
+  
+  const posts = await store.fetchRedditPosts('wsb', limit, fetchFn)
   // normalise field name for Microlink (store uses outbound_url, enricher expects outboundUrl)
   const mapped = posts.map(p => ({ ...p, outboundUrl: p.outboundUrl ?? p.outbound_url ?? null }))
   return enrichRedditPostThumbnails(mapped)
@@ -167,7 +186,19 @@ export async function fetchWallstreetbetsPosts(limit = 12) {
 
 export async function fetchEconomicsPosts(limit = 12) {
   const store = useNewsStore()
-  const posts = await store.fetchRedditPosts('economics', limit, () => _fetchSubredditDirect('economics', limit + 5))
+  
+  // Try direct fetch first, fallback to backend proxy on CORS/network errors
+  const fetchFn = async () => {
+    try {
+      return await _fetchSubredditDirect('economics', limit + 5)
+    } catch (directError) {
+      console.warn('[Economics] Direct fetch failed, using backend proxy')
+      // Return null to signal the store to use its default backend fetcher
+      return null
+    }
+  }
+  
+  const posts = await store.fetchRedditPosts('economics', limit, fetchFn)
   const mapped = posts.map(p => ({ ...p, outboundUrl: p.outboundUrl ?? p.outbound_url ?? null }))
   return enrichRedditPostThumbnails(mapped)
 }

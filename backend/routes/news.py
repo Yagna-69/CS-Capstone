@@ -8,9 +8,10 @@ fetch serves everyone until TTL expires.
 
 import time
 from fastapi import APIRouter, HTTPException
+from config import settings
+from database import get_supabase_admin
 import httpx
 from datetime import datetime, timedelta
-from database import get_supabase_admin
 
 router = APIRouter()
 
@@ -18,28 +19,36 @@ router = APIRouter()
 _news_cache: dict[str, tuple[list, float]] = {}
 NEWS_CACHE_TTL = 30 * 60  # 30 minutes
 
-_newsapi_key_cache: tuple[str | None, float] = (None, 0)
-_NEWSAPI_KEY_TTL = 10 * 60  # re-fetch from Supabase every 10 minutes
 
-
-async def _get_newsapi_key() -> str:
-    global _newsapi_key_cache
-    key, fetched_at = _newsapi_key_cache
-    if key and (time.time() - fetched_at) < _NEWSAPI_KEY_TTL:
-        return key
+def _get_newsapi_key() -> str:
+    """
+    Retrieve the NewsAPI key from Supabase news_api_key table.
+    Falls back to settings.newsapi_key if Supabase lookup fails.
+    """
     try:
-        result = get_supabase_admin().table("news_api_key").select("api_key").order("id", desc=True).limit(1).execute()
-    except Exception as exc:
-        raise HTTPException(500, f"Failed to fetch NewsAPI key from Supabase: {exc}")
-    rows = result.data or []
-    if not rows:
-        raise HTTPException(500, "news_api_key table is empty — no key found in Supabase")
-    key = rows[0].get("api_key") or ""
-    if not key:
-        raise HTTPException(500, "news_api_key row exists but api_key column is null/empty")
-    _newsapi_key_cache = (key, time.time())
-    return key
-
+        admin = get_supabase_admin()
+        resp = (
+            admin.table("news_api_key")
+            .select("api_key")
+            .limit(1)
+            .execute()
+        )
+        if resp.data and len(resp.data) > 0:
+            return resp.data[0]["api_key"]
+        
+        # Fallback: use .env value
+        if settings.newsapi_key:
+            return settings.newsapi_key
+            
+        raise HTTPException(500, "No NewsAPI key configured in Supabase or .env")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        # On any Supabase error, fall back to .env
+        if settings.newsapi_key:
+            return settings.newsapi_key
+        raise HTTPException(500, f"Failed to retrieve NewsAPI key: {str(e)}")
 
 
 async def _fetch_subreddit_hot(subreddit: str, limit: int) -> dict:
@@ -204,7 +213,7 @@ async def get_news(currency: str = None, limit: int = 10, q: str = None):
     Results are cached server-side for NEWS_CACHE_TTL (30 min) so all users
     share a single NewsAPI call per unique query — staying within free tier limits.
     """
-    newsapi_key = await _get_newsapi_key()
+    newsapi_key = _get_newsapi_key()
 
     limit = max(1, min(limit, 100))
 
