@@ -63,9 +63,12 @@ function _outboundUrl(post) {
   } catch { return null }
 }
 
-async function _fetchSubredditDirect(subreddit, limit) {
+async function _fetchSubredditDirect(subreddit, limit, searchQuery = null) {
   const fetchLimit = limit + 5
-  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${fetchLimit}`
+  const baseUrl = `https://www.reddit.com/r/${subreddit}`
+  const url = searchQuery
+    ? `${baseUrl}/search.json?q=${encodeURIComponent(searchQuery)}&restrict_sr=on&sort=relevance&t=all&limit=${fetchLimit}`
+    : `${baseUrl}/hot.json?limit=${fetchLimit}`
   
   try {
     const res = await fetch(url, { headers: { Accept: 'application/json' } })
@@ -91,6 +94,7 @@ async function _fetchSubredditDirect(subreddit, limit) {
         outbound_url: outboundUrl,
         flair:        p.link_flair_text || '',
         selftext:     p.selftext ? p.selftext.slice(0, 200) + '...' : '',
+        subreddit:    p.subreddit || '',
       })
       if (posts.length >= limit) break
     }
@@ -159,6 +163,42 @@ export async function enrichRedditPostThumbnails(posts) {
   for (const p of posts)
     if (!p.thumbnail && p.outboundUrl) { const img = _ogMemory.get(p.outboundUrl); if (img) p.thumbnail = img }
   return posts
+}
+
+// ---------------------------------------------------------------------------
+// Search across multiple subreddits
+// ---------------------------------------------------------------------------
+export async function searchRedditPosts(query, limit = 10) {
+  if (!query || !query.trim()) return []
+  
+  const subreddits = ['economics', 'wallstreetbets', 'news']
+  const postsPerSub = Math.ceil(limit / subreddits.length)
+  
+  try {
+    // Fetch from all subreddits in parallel
+    const results = await Promise.allSettled(
+      subreddits.map(sub => _fetchSubredditDirect(sub, postsPerSub, query.trim()))
+    )
+    
+    // Combine all successful results
+    const allPosts = []
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        allPosts.push(...result.value)
+      }
+    }
+    
+    // Sort by score (relevance) and limit
+    const sorted = allPosts
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+    
+    // Enrich thumbnails
+    return await enrichRedditPostThumbnails(sorted)
+  } catch (err) {
+    console.error('[Reddit Search] Failed:', err)
+    return []
+  }
 }
 
 // ---------------------------------------------------------------------------

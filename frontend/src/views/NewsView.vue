@@ -21,7 +21,7 @@
             @focus="handleSearchFocus"
             @keyup.enter="performSearch"
             type="text"
-            placeholder="Search financial news..."
+            placeholder="Search r/economics, r/wallstreetbets, r/news..."
             class="w-full pl-12 pr-12 py-3 bg-bg-secondary border border-gray-700 rounded-full text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
           />
           
@@ -67,15 +67,19 @@
     </div>
 
     <div class="mb-4">
-      <p v-if="loading" class="text-sm text-gray-300">Loading world news...</p>
-      <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
+      <p v-if="curatedLoading" class="text-sm text-gray-300">
+        {{ currentSearchQuery ? 'Searching Reddit...' : 'Loading economics news...' }}
+      </p>
+      <p v-if="curatedError" class="text-sm text-red-400">{{ curatedError }}</p>
     </div>
 
-    <!-- Curated News: 2-card bento + one row of 4 (6 stories; API fetch trimmed & deduped in store) -->
-    <h2 class="text-4xl font-bold text-primary mb-6 font-goldman">Curated News</h2>
+    <!-- Dynamic Title: Search Results or Top Economics Stories -->
+    <h2 class="text-4xl font-bold text-primary mb-6 font-goldman">
+      {{ currentSearchQuery ? `Search Results: "${currentSearchQuery}"` : 'Top Economics Stories' }}
+    </h2>
 
-    <div v-if="!loading && !error && !featuredStories.length && !regularStories.length" class="text-center text-gray-400 py-20">
-      No news available right now. Try again in a moment.
+    <div v-if="!curatedLoading && !curatedError && !featuredStories.length && !regularStories.length" class="text-center text-gray-400 py-20">
+      {{ currentSearchQuery ? 'No results found for your search.' : 'No economics stories available right now. Try again in a moment.' }}
     </div>
 
     <div class="bento-grid mb-6">
@@ -88,22 +92,12 @@
       />
     </div>
 
-    <div class="news-grid news-grid-four mb-6">
+    <div class="news-grid news-grid-four mb-10">
       <NewsStoryCard
         v-for="story in regularStories"
         :key="story.id"
         :story="story"
       />
-    </div>
-
-    <div v-if="currentSearchQuery && !loading && regularStories.length > 0" class="flex justify-center mb-10">
-      <button
-        type="button"
-        class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-        @click="loadMoreNews"
-      >
-        Load More Articles
-      </button>
     </div>
 
     <RedditHotCarousel
@@ -140,19 +134,14 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import NewsStoryCard from '@/components/NewsStoryCard.vue'
 import RedditHotCarousel from '@/components/RedditHotCarousel.vue'
 import TradingViewStockHeatmap from '@/components/TradingViewStockHeatmap.vue'
-import { useNewsStore } from '@/stores/news'
-import { newsApi } from '@/services/api'
-import { fetchWallstreetbetsPosts, fetchEconomicsPosts } from '@/composables/useReddit'
-
-const newsStore = useNewsStore()
+import { fetchWallstreetbetsPosts, fetchEconomicsPosts, searchRedditPosts } from '@/composables/useReddit'
 
 const featuredStories = ref([])
 const regularStories = ref([])
-const error = ref(null)
-const loading = ref(false)
+const curatedError = ref(null)
+const curatedLoading = ref(false)
 const searchQuery = ref('')
 const currentSearchQuery = ref(null)
-const moreCount = ref(0)
 const showSearchSuggestions = ref(false)
 const searchFocused = ref(false)
 const searchContainer = ref(null)
@@ -167,16 +156,16 @@ const econPosts = ref([])
 const econLoading = ref(false)
 const econError = ref(null)
 
-// Hardcoded forex-related search suggestions
+// Search suggestions for Reddit (economics, wallstreetbets, news)
 const searchSuggestions = [
-  { query: 'forex trading', label: 'Forex Trading', description: 'Currency market news and analysis' },
-  { query: 'central bank', label: 'Central Bank News', description: 'Fed, ECB, BOJ policy updates' },
-  { query: 'USD EUR GBP JPY', label: 'Major Currencies', description: 'News about major currency pairs' },
-  { query: 'interest rates', label: 'Interest Rates', description: 'Rate decisions and economic policy' },
-  { query: 'currency volatility', label: 'Market Volatility', description: 'Currency fluctuations and trends' },
-  { query: 'exchange rate', label: 'Exchange Rates', description: 'Global exchange rate movements' },
-  { query: 'economic indicators', label: 'Economic Data', description: 'GDP, inflation, employment reports' },
-  { query: 'emerging markets currency', label: 'Emerging Markets', description: 'EM currency developments' }
+  { query: 'forex', label: 'Forex Trading', description: 'Currency trading discussions' },
+  { query: 'fed', label: 'Federal Reserve', description: 'Fed policy and rate decisions' },
+  { query: 'inflation', label: 'Inflation', description: 'Inflation news and analysis' },
+  { query: 'stock market', label: 'Stock Market', description: 'Market trends and analysis' },
+  { query: 'recession', label: 'Recession', description: 'Economic downturn discussions' },
+  { query: 'earnings', label: 'Earnings Reports', description: 'Company earnings and results' },
+  { query: 'crypto', label: 'Cryptocurrency', description: 'Crypto market discussions' },
+  { query: 'unemployment', label: 'Jobs & Employment', description: 'Employment data and trends' }
 ]
 
 // Click outside handler to close dropdown
@@ -202,53 +191,87 @@ function selectSuggestion(query) {
 }
 
 const CURATED_TOTAL = 6
-const CURATED_FETCH = 8
+const CURATED_FETCH = 12
 
-function storyUrlKey(story) {
-  return (story.url || '').trim().toLowerCase()
-}
-
-async function loadNews(query = null) {
-  loading.value = true
-  error.value = null
-  moreCount.value = 0
-
-  const normalizedQuery = query && String(query).trim() ? String(query).trim() : null
-  currentSearchQuery.value = normalizedQuery
+// Load top economics stories from r/economics for the curated section
+async function loadCuratedEconomics() {
+  curatedLoading.value = true
+  curatedError.value = null
 
   try {
-    const articles = await newsStore.fetchNews(normalizedQuery, CURATED_FETCH)
+    const posts = await fetchEconomicsPosts(CURATED_FETCH)
 
-    if (!articles || articles.length === 0) {
-      error.value = 'No news articles found. Please try again later.'
+    if (!posts || posts.length === 0) {
+      curatedError.value = 'No economics stories found. Please try again later.'
       featuredStories.value = []
       regularStories.value = []
       return
     }
 
-    const top = articles.slice(0, CURATED_TOTAL)
-    const processed = top.map((article, index) => ({
-      ...article,
+    // Transform Reddit posts to match NewsStoryCard format
+    const top = posts.slice(0, CURATED_TOTAL)
+    const processed = top.map((post, index) => ({
+      id: post.id,
+      headline: post.title,
+      date: post.time,
+      image: post.thumbnail || 'https://placehold.co/400x300/1a1a1a/FFD700?text=r/economics',
+      url: post.url,
+      source: 'r/economics',
       size: index === 0 ? 'large' : index === 1 ? 'medium' : undefined,
     }))
 
     featuredStories.value = processed.slice(0, 2)
     regularStories.value = processed.slice(2, CURATED_TOTAL)
   } catch (err) {
-    console.error('Error loading news:', err)
-    const status = err.response?.status
-    const serverDetail = err.response?.data?.detail || err.response?.data?.message
-    error.value = serverDetail || `Unable to load news${status ? ` (HTTP ${status})` : ''}.`
+    console.error('Error loading curated economics:', err)
+    curatedError.value = 'Unable to load economics stories.'
   } finally {
-    loading.value = false
+    curatedLoading.value = false
   }
 }
 
-function performSearch() {
-  if (searchQuery.value.trim()) {
-    searchFocused.value = false
-    showSearchSuggestions.value = false
-    loadNews(searchQuery.value.trim())
+async function performSearch() {
+  if (!searchQuery.value.trim()) return
+  
+  searchFocused.value = false
+  showSearchSuggestions.value = false
+  
+  const query = searchQuery.value.trim()
+  currentSearchQuery.value = query
+  
+  curatedLoading.value = true
+  curatedError.value = null
+
+  try {
+    // Search across r/economics, r/wallstreetbets, and r/news
+    const posts = await searchRedditPosts(query, 12)
+
+    if (!posts || posts.length === 0) {
+      curatedError.value = 'No posts found for your search across Reddit.'
+      featuredStories.value = []
+      regularStories.value = []
+      return
+    }
+
+    // Transform Reddit posts to match NewsStoryCard format
+    const processed = posts.slice(0, 6).map((post, index) => ({
+      id: post.id || `search-${index}`,
+      headline: post.title,
+      date: post.time,
+      image: post.thumbnail || 'https://placehold.co/400x300/1a1a1a/FFD700?text=Reddit',
+      url: post.url,
+      source: `r/${post.subreddit || 'reddit'}`,
+      size: index === 0 ? 'large' : index === 1 ? 'medium' : undefined,
+    }))
+
+    // Maintain bento-box layout: 2 featured + 4 regular
+    featuredStories.value = processed.slice(0, 2)
+    regularStories.value = processed.slice(2, 6)
+  } catch (err) {
+    console.error('Error searching Reddit:', err)
+    curatedError.value = 'Unable to search Reddit. Please try again.'
+  } finally {
+    curatedLoading.value = false
   }
 }
 
@@ -256,53 +279,8 @@ function clearSearch() {
   searchQuery.value = ''
   searchFocused.value = false
   showSearchSuggestions.value = false
-  loadNews()
-}
-
-async function loadMoreNews() {
-  if (!currentSearchQuery.value) return
-  
-  loading.value = true
-  error.value = null
-  moreCount.value += 1
-
-  try {
-    const { data } = await newsApi.getNews(undefined, 9, currentSearchQuery.value)
-    
-    if (data.status !== 'ok' || !data.articles) {
-      error.value = 'No more articles available'
-      return
-    }
-
-    const seen = new Set(
-      [...featuredStories.value, ...regularStories.value].map(storyUrlKey).filter(Boolean)
-    )
-
-    const articles = data.articles
-      .map((article, index) => ({
-        id: article.id || `more-${moreCount.value}-${index}`,
-        headline: article.headline || article.title || 'Untitled',
-        date: article.date || '',
-        image: article.image || 'https://placehold.co/400x300/1a1a1a/FFD700?text=No+Image',
-        url: article.url,
-        source: article.source,
-      }))
-      .filter((a) => {
-        const k = storyUrlKey(a)
-        if (!k) return true
-        if (seen.has(k)) return false
-        seen.add(k)
-        return true
-      })
-
-    regularStories.value.push(...articles)
-  } catch (err) {
-    const status = err.response?.status
-    const serverDetail = err.response?.data?.detail || err.response?.data?.message
-    error.value = serverDetail || `Unable to load more news${status ? ` (HTTP ${status})` : ''}.`
-  } finally {
-    loading.value = false
-  }
+  currentSearchQuery.value = null
+  loadCuratedEconomics()
 }
 
 async function loadWsbPosts() {
@@ -335,7 +313,7 @@ async function loadEconomicsPosts() {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  loadNews()
+  loadCuratedEconomics()
   loadWsbPosts()
   loadEconomicsPosts()
 })

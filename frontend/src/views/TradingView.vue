@@ -333,35 +333,6 @@
       </div>
     </div>
 
-    <!-- Related News Section -->
-    <div class="glass p-6 rounded-xl">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-white">Related News</h2>
-        <span class="text-xs text-gray-400">{{ chartPair }}</span>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <a
-          v-for="article in relatedNews.slice(0, 3)"
-          :key="article.id"
-          :href="article.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="bg-bg-primary rounded-lg p-4 hover:bg-bg-primary/80 transition cursor-pointer border border-gray-800 hover:border-primary/30"
-        >
-          <div>
-            <h3 class="text-sm font-semibold text-white mb-2 line-clamp-2">
-              {{ article.headline }}
-            </h3>
-            <div class="flex items-center gap-2 text-xs text-gray-400">
-              <span>{{ article.source }}</span>
-              <span>•</span>
-              <span>{{ article.time }}</span>
-            </div>
-          </div>
-        </a>
-      </div>
-    </div>
 
     <!-- Pending Orders -->
     <div class="glass p-6 rounded-xl">
@@ -648,7 +619,7 @@
         <!-- Tabs -->
         <div class="flex border-b border-gray-700">
           <button
-            v-for="tab in ['exchange', 'news']"
+            v-for="tab in ['exchange']"
             :key="tab"
             @click="activeTab = tab"
             :class="[
@@ -830,23 +801,6 @@
             </div>
           </div>
 
-          <!-- News Tab -->
-          <div v-if="activeTab === 'news'" class="space-y-3">
-            <a
-              v-for="article in relatedNews.slice(0, 3)"
-              :key="article.id"
-              :href="article.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-3 rounded-lg bg-gradient-to-br from-bg-primary to-bg-secondary border border-gray-700 hover:border-gray-600 transition-all cursor-pointer"
-            >
-              <h4 class="text-sm font-semibold text-white mb-1 leading-snug">{{ article.headline }}</h4>
-              <div class="flex items-center justify-between text-xs text-gray-400">
-                <span>{{ article.source }}</span>
-                <span>{{ article.time }}</span>
-              </div>
-            </a>
-          </div>
         </div>
       </div>
     </div>
@@ -860,7 +814,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { tradeApi, ordersApi } from '@/services/api'
 import { usePortfolioStore } from '@/stores/portfolio'
 import { useForexStore } from '@/stores/forex'
-import { useNewsStore } from '@/stores/news'
 import { useAuthStore } from '@/stores/auth'
 import TradeFeedbackAction from '@/components/TradeFeedbackAction.vue'
 import { createChart } from 'lightweight-charts'
@@ -869,7 +822,6 @@ const route = useRoute()
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
-const newsStore = useNewsStore()
 const authStore = useAuthStore()
 
 // Respect the "Trade Confirmations" notification preference
@@ -1531,30 +1483,6 @@ async function toggleFullscreen() {
   await loadChartData(false)
 }
 
-// ── Related News (fetch from API based on chart pair) ───────────────────
-const relatedNews = ref([])
-
-async function loadRelatedNews() {
-  try {
-    const [from, to] = chartPair.value.split('/')
-    // More specific query focusing on the pair
-    const query = `${from}/${to} OR (${from} AND ${to} forex)`
-    
-    // Use cached news store
-    const articles = await newsStore.fetchNews(query, 3)
-    
-    relatedNews.value = articles.slice(0, 3).map(article => ({
-      id: article.id,
-      headline: article.headline,
-      source: article.source,
-      time: article.date,
-      url: article.url
-    }))
-  } catch (err) {
-    console.error('Failed to load related news:', err)
-    relatedNews.value = []
-  }
-}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 const activeTab = ref('exchange')
@@ -1741,11 +1669,7 @@ onMounted(async () => {
   watch(chartPair, () => {
     syncCurrenciesFromChart()
     loadChartData(true) // Show loading when user changes pair
-    loadRelatedNews()    // Reload news for new pair
   })
-  
-  // Load initial news on mount
-  loadRelatedNews()
 
   // Reset target/limit price when switching back to Market
   watch(orderType, (val) => {

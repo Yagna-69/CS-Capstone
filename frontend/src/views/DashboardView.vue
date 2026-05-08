@@ -152,7 +152,7 @@
             </div>
           </div>
 
-          <!-- Feed Widget -->
+          <!-- Feed Widget (r/economics) -->
           <div
             v-else-if="widgetId === 'feed'"
             @dragover.prevent="handleDragOver($event, 'feed', 'side')"
@@ -173,14 +173,12 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
                   </svg>
                 </div>
-                <h2 class="text-xl font-bold text-white">Feed</h2>
+                <h2 class="text-xl font-bold text-white">Economic News</h2>
               </div>
             </div>
             <div class="bg-bg-primary rounded-lg mx-6 p-3 flex-1 overflow-auto">
               <div v-if="feedItems.length === 0" class="flex items-center justify-center py-8 text-gray-500 text-sm text-center px-2">
-                {{ portfolioStore.holdings.length === 0 
-                  ? 'No holdings yet. Add currencies to see relevant news.' 
-                  : 'Loading news feed...' }}
+                Loading news from r/economics...
               </div>
               <div v-else class="space-y-1.5">
                 <a
@@ -191,7 +189,7 @@
                   rel="noopener noreferrer"
                   class="block px-3 py-2.5 bg-bg-secondary rounded-lg hover:border-primary border border-transparent transition-all cursor-pointer group"
                 >
-                  <p class="text-sm text-white font-medium group-hover:text-primary transition">{{ item.title }}</p>
+                  <p class="text-sm text-white font-medium group-hover:text-primary transition line-clamp-2">{{ item.title }}</p>
                   <p class="text-xs text-gray-500 mt-1">{{ item.time }}</p>
                 </a>
               </div>
@@ -199,9 +197,10 @@
             
             <!-- Feed Footer -->
             <div class="widget-footer">
-              <p class="text-xs text-gray-400">Last updated: Just now</p>
+              <p class="text-xs text-gray-400">r/economics</p>
             </div>
           </div>
+
         </template>
       </div>
 
@@ -512,9 +511,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '@/stores/portfolio'
 import { useForexStore } from '@/stores/forex'
-import { useNewsStore } from '@/stores/news'
 import { usePrefsStore } from '@/stores/prefs'
 import { useAuthStore } from '@/stores/auth'
+import { fetchEconomicsPosts } from '@/composables/useReddit'
 import {
   startOfLocalDayMs,
   endOfLocalDayMs,
@@ -551,7 +550,6 @@ ChartJS.register(
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const forexStore = useForexStore()
-const newsStore = useNewsStore()
 const prefsStore = usePrefsStore()
 const authStore = useAuthStore()
 
@@ -754,8 +752,8 @@ onMounted(async () => {
 
   portfolioStore.fetchHistory('1mo')
   portfolioStore.fetchFirstTransactionDate()
-  loadFeedNews()
   loadWishlistSparklines()
+  loadFeedNews()
 
   portfolioRefreshTimer = setInterval(async () => {
     const result = await portfolioStore.fetchHoldings()
@@ -1162,32 +1160,18 @@ function getWishlistPrice(pair) {
   return rate ? rate.toFixed(4) : '—'
 }
 
-// Load news feed based on holdings (using cached store)
+// Load economic news feed from r/economics
 async function loadFeedNews() {
   try {
-    const holdings = portfolioStore.holdings
-    if (holdings.length === 0) {
-      feedItems.value = []
-      return
-    }
-    
-    // Build more specific query from held currencies
-    const heldCurrencies = holdings.map(h => h['currency-ticker-symbol'] || h.currency)
-    // Use AND to ensure forex relevance, limit to 3-4 currencies to avoid too broad query
-    const topCurrencies = heldCurrencies.slice(0, 4).join(' ')
-    const query = `${topCurrencies} forex market`
-    
-    // Use cached news store
-    const articles = await newsStore.fetchNews(query, 5)
-    
-    feedItems.value = articles.slice(0, 5).map(article => ({
-      id: article.id,
-      title: article.headline,
-      time: article.date,
-      url: article.url
+    const posts = await fetchEconomicsPosts(5)
+    feedItems.value = posts.slice(0, 5).map(post => ({
+      id: post.id,
+      title: post.title,
+      time: post.time,
+      url: post.url
     }))
   } catch (err) {
-    console.error('Failed to load feed news:', err)
+    console.error('Failed to load economics feed:', err)
     feedItems.value = []
   }
 }
