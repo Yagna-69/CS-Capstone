@@ -1,5 +1,7 @@
 # FXTrade
 
+https://cs-capstone-git-18082002171.us-central1.run.app/
+
 A forex trading platform built with Vue 3, FastAPI, and Supabase.
 
 ## Features
